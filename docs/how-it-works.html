@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Supervision decides</title>
+<style>
+  :root { --bg:#171a23; --card:#1f2330; --ink:#f2f3f7; --muted:#a9afc0; --dim:#6d7385; --gold:#ffd98a; --green:#7fd8a0; --yellow:#ffd166; --red:#ff8a8a; --blue:#8ab4ff; --line:#2f3444; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 -apple-system, system-ui, "Helvetica Neue", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  h2 { font-size: 20px; margin: 44px 0 10px; }
+  p, li { color: var(--muted); }
+  p strong, li strong { color: var(--ink); font-weight: 600; }
+  .lede { font-size: 18px; color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin: 14px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .pill { display:inline-block; padding: 2px 9px; border-radius: 999px; font-size: 13px; border: 1px solid var(--line); color: var(--muted); margin-right: 6px; }
+  .g { color: var(--green); } .y { color: var(--yellow); } .r { color: var(--red); } .gold { color: var(--gold); } .b { color: var(--blue); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+  td { color: var(--muted); } td:first-child { color: var(--ink); }
+  svg { width: 100%; height: auto; display: block; margin: 8px 0 4px; }
+  svg text { font: 13px -apple-system, system-ui, sans-serif; fill: var(--ink); }
+  svg .m { fill: var(--muted); font-size: 12px; }
+  svg .box { fill: var(--card); stroke: var(--line); stroke-width: 1.2; rx: 10; }
+  svg .arrow { stroke: var(--dim); stroke-width: 1.6; fill: none; marker-end: url(#a); }
+  .foot { color: var(--dim); font-size: 13px; margin-top: 40px; }
+  code { background: #11131a; padding: 1px 6px; border-radius: 6px; color: var(--ink); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>How Supervision decides 🧠</h1>
+  <p class="lede">The one job: <strong>no sustained crash cycles, with the widest life that goal allows.</strong> Everything below is an experiment with a review date, not a diagnosis. The number that judges any day is the morning <em>two days later</em>.</p>
+
+  <h2>What it looks at</h2>
+  <svg viewBox="0 0 820 250" role="img" aria-label="Inputs flow into decisions which produce outputs">
+    <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#6d7385"/></marker></defs>
+    <rect class="box" x="10" y="10" width="230" height="230"/>
+    <text x="24" y="36" class="gold">Inputs</text>
+    <text x="24" y="64">🩺 Whoop, each morning</text><text x="40" y="82" class="m">recovery · resting HR · HRV · sleep</text>
+    <text x="24" y="106">🖥️ What's on screen, every 5 s</text><text x="40" y="124" class="m">app + window title → kind of work</text>
+    <text x="24" y="148">📅 Calendar &amp; live calls</text><text x="40" y="166" class="m">meetings, Zoom, camera, mic</text>
+    <text x="24" y="190">🙂 Your faces &amp; flags</text><text x="40" y="208" class="m">fog · headache · crashy · travel</text>
+    <text x="24" y="232">📍 Where you are (Wi-Fi)</text>
+
+    <path class="arrow" d="M240 125 L300 125"/>
+    <rect class="box" x="300" y="40" width="230" height="170"/>
+    <text x="314" y="66" class="gold">Decisions</text>
+    <text x="314" y="94">Today's tier &amp; block length</text>
+    <text x="314" y="118">Today's weighted budget</text>
+    <text x="314" y="142">Which break, and why</text>
+    <text x="314" y="166">The symptom gate</text>
+    <text x="314" y="190">The ramp (every 2 weeks)</text>
+
+    <path class="arrow" d="M530 125 L590 125"/>
+    <rect class="box" x="590" y="10" width="220" height="230"/>
+    <text x="604" y="36" class="gold">Outputs</text>
+    <text x="604" y="64">🌱 A nudge, then a lock</text>
+    <text x="604" y="88">🌙 The break screen, with reasons</text>
+    <text x="604" y="112">📆 Your Google calendar</text>
+    <text x="604" y="136">🗂️ Optional: Airtable, via Claude</text>
+    <text x="604" y="160">📊 The activity ledger</text>
+    <text x="604" y="184">💬 Claude, for anything else</text>
+    <text x="604" y="222" class="m">Nothing else leaves the Mac.</text>
+  </svg>
+
+  <h2>The day, one block at a time</h2>
+  <svg viewBox="0 0 820 150" role="img" aria-label="Work block, short rest, three faces, gate, repeat">
+    <rect class="box" x="10" y="35" width="160" height="70"/><text x="26" y="62">Work block</text><text x="26" y="84" class="m">30 / 25 / 15 min by tier</text>
+    <path class="arrow" d="M170 70 L200 70"/>
+    <rect class="box" x="200" y="35" width="160" height="70"/><text x="216" y="62">Short rest</text><text x="216" y="84" class="m">5–10 min; long one per 2 h</text>
+    <path class="arrow" d="M360 70 L390 70"/>
+    <rect class="box" x="390" y="35" width="150" height="70"/><text x="406" y="62">Three faces</text><text x="406" y="84" class="m">fog · headache · crashy</text>
+    <path class="arrow" d="M540 70 L570 70"/>
+    <rect class="box" x="570" y="20" width="240" height="100"/><text x="586" y="44" class="gold">The gate</text>
+    <text x="586" y="66" class="g">steady → next block</text>
+    <text x="586" y="86" class="y">up 1 → shorter blocks, plain rest</text>
+    <text x="586" y="106" class="r">up 2 (or any face 4+) → done today</text>
+    <path class="arrow" d="M690 120 C690 145 90 145 90 108"/>
+  </svg>
+  <p>"Up" means compared with your <strong>first reading of the day</strong>, so a foggy morning doesn't count against you. Stopping at the gate is the experiment working, not a failure. Skipping the faces is allowed; it just means no reading.</p>
+
+  <h2>Tiers: the morning number sets the day</h2>
+  <div class="grid">
+    <div class="card"><span class="pill g">Green · recovery ≥ 67</span><p><strong>30-min blocks</strong>, 5-min rests, base <strong>180</strong> weighted minutes. Walks, Pilates (once, before 3 pm), foot PT, stretching, journal, plan, rap, poetry.</p></div>
+    <div class="card"><span class="pill y">Yellow · 34–66</span><p><strong>25-min blocks</strong>, 7-min rests, base <strong>150</strong>. Stretch, foot PT, journal, plan, music.</p></div>
+    <div class="card"><span class="pill r">Red · &lt; 34</span><p><strong>15-min blocks</strong>, 10-min rests, base <strong>90</strong>. Rest and music only.</p></div>
+  </div>
+  <p>No Whoop reading yet? Treated as yellow. Physical movement is gated by the tier and a heart-rate ceiling (<strong>resting HR + 15</strong>), not by the work budget. A walk doesn't spend screen minutes.</p>
+
+  <h2>The budget is weighted, not raw</h2>
+  <table>
+    <tr><th>Kind of work</th><th>Weight</th><th>Why</th></tr>
+    <tr><td>Admin, email, light comms</td><td>0.8×</td><td>Low demand, but context-switchy</td></tr>
+    <tr><td>Reading, writing, analysis, building</td><td>1.0×</td><td>Demanding but steady</td></tr>
+    <tr><td>Video editing (CapCut etc.)</td><td>1.2×</td><td>Visual + decisions, continuous</td></tr>
+    <tr><td>Video meetings</td><td>1.3×</td><td>Looking + listening + performing</td></tr>
+    <tr><td>Meetings you flag "intense"</td><td>1.6×</td><td>Emotional load is a commonly reported trigger</td></tr>
+    <tr><td>Heavy context switching</td><td>+10% per hour</td><td>Divided attention is the hardest thing for ME/CFS cognition</td></tr>
+    <tr><td>Off-screen work you tell Claude about</td><td>0.5×</td><td>Thinking still counts; the screen bundle doesn't</td></tr>
+  </table>
+  <p>Same-day dips, never permanent: sleep under 6 h −25% · travel day −30% · stress flag or a 😕 check-in −30% · a heavy yesterday caps today at 75%. And the real guard rail: <strong>the 3-day rolling total can't exceed 2.5× your base.</strong> One big day is fine. Three in a row is what neither doctor wants.</p>
+
+  <h2>Earning it back</h2>
+  <svg viewBox="0 0 820 130" role="img" aria-label="A day is judged by the two mornings after it">
+    <rect class="box" x="10" y="30" width="150" height="60"/><text x="30" y="55">Day D</text><text x="30" y="75" class="m">you work</text>
+    <path class="arrow" d="M160 60 L200 60"/>
+    <rect class="box" x="200" y="30" width="150" height="60"/><text x="220" y="55">Morning D+1</text><text x="220" y="75" class="m">recovery · RHR</text>
+    <path class="arrow" d="M350 60 L390 60"/>
+    <rect class="box" x="390" y="30" width="150" height="60"/><text x="410" y="55">Morning D+2</text><text x="410" y="75" class="m">recovery · RHR · gate?</text>
+    <path class="arrow" d="M540 60 L580 60"/>
+    <rect class="box" x="580" y="15" width="230" height="95"/><text x="600" y="40" class="gold">Verdict on day D</text>
+    <text x="600" y="62" class="g">clean → streak +1</text>
+    <text x="600" y="82" class="m">3 clean days → +20 min base,</text>
+    <text x="600" y="100" class="m">+5 min blocks, new experiment</text>
+  </svg>
+  <p><strong>Clean</strong> means: neither following morning is red, resting HR within +4 of your 28-day median, no crash flagged, the gate didn't fire. Capacity <strong>drops 15% for 14 days only on a pattern</strong>: a crash, two red mornings in a week, or resting HR up 5+ for three days straight. A single bad day changes that day only. Caps: 6 hours base, 45-minute blocks, never more than +20% a month.</p>
+
+  <h2>Breaks: what you get and why</h2>
+  <p>Every break screen shows the activity, the instructions, the numbers behind the choice, and up to three alternatives you can tap. When it keeps you on plain rest it says what you'd rather be doing, the specific gate ("you're at 140 of 150"), and what would unlock the other options. Movement is always followed by rest; never two active breaks in a row; none after 5 pm.</p>
+
+  <h2>What never happens</h2>
+  <ul>
+    <li>A lock during a call: calendar events with video links (±10 min), Zoom's in-meeting process, camera, mic, and meeting windows all defer it.</li>
+    <li>More than one nudge per block, or more than two check-in cards a day. Eat/water reminders ride on the break screen.</li>
+    <li>The words "push through" or "dangerous." A missed limit is logged as data.</li>
+    <li>A capacity change from one bad day.</li>
+  </ul>
+
+  <h2>Talking to it</h2>
+  <p>The only way to pause or adjust is asking Claude, who logs the reason. Useful things to say: "pause for an hour, I'm in a crunch" · "that meeting was intense" · "I did 30 minutes on paper" · "flag travel" · "what did I get done today?" · "how's the experiment going?"</p>
+
+  <p class="foot">Sources and the reasoning behind each rule: RESEARCH.md and docs/DESIGN.md in the project. Review the numbers every two weeks. Nothing here is medical advice; it's a way of learning from your own delayed response.</p>
+</main>
+</body>
+</html>
