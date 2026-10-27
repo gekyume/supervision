@@ -11,6 +11,8 @@ final class MoveCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
     private var held = 0.0
     var needStand = true
     var onUpdate: ((_ held: Double, _ posed: Bool, _ coach: String) -> Void)?
+    /// The joints seen this frame, for the live dot figure (PoseView keys).
+    var onJoints: (([String: CGPoint]) -> Void)?
 
     func start(needStand: Bool) -> Bool {
         guard session == nil, AVCaptureDevice.authorizationStatus(for: .video) == .authorized, let cam = AVCaptureDevice.default(for: .video),
@@ -26,7 +28,7 @@ final class MoveCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
         return true
     }
 
-    func stop() { let s = session; session = nil; onUpdate = nil; queue.async { s?.stopRunning() } }
+    func stop() { let s = session; session = nil; onUpdate = nil; onJoints = nil; queue.async { s?.stopRunning() } }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput buffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         let now = Date(), dt = now.timeIntervalSince(last)
@@ -35,9 +37,14 @@ final class MoveCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
         let req = VNDetectHumanBodyPoseRequest()
         try? VNImageRequestHandler(cvPixelBuffer: px, options: [:]).perform([req])
         var posed = false
+        var seen: [String: CGPoint] = [:]
         var coach = MoveRule.coach(bodySeen: false, shoulderWidth: nil, centerX: nil, hipsVisible: false, needStand: needStand, leftWristUp: false, rightWristUp: false)
         if let body = req.results?.first, let pts = try? body.recognizedPoints(.all) {
             let p: (VNHumanBodyPoseObservation.JointName) -> CGPoint? = { j in pts[j].flatMap { $0.confidence > 0.3 ? $0.location : nil } }
+            let keys: [(String, VNHumanBodyPoseObservation.JointName)] = [("nose", .nose), ("neck", .neck), ("lS", .leftShoulder), ("rS", .rightShoulder),
+                ("lE", .leftElbow), ("rE", .rightElbow), ("lW", .leftWrist), ("rW", .rightWrist), ("lH", .leftHip), ("rH", .rightHip),
+                ("lK", .leftKnee), ("rK", .rightKnee), ("lA", .leftAnkle), ("rA", .rightAnkle)]
+            for (k, j) in keys { if let q = p(j) { seen[k] = q } }
             let hips = p(.leftHip) != nil || p(.rightHip) != nil
             let nose = p(.nose) ?? p(.neck)
             let lw = p(.leftWrist), rw = p(.rightWrist), ls = p(.leftShoulder), rs = p(.rightShoulder)
@@ -50,6 +57,6 @@ final class MoveCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate 
         }
         if posed { held += min(dt, 0.5) }
         let h = held
-        DispatchQueue.main.async { self.onUpdate?(h, posed, coach) }
+        DispatchQueue.main.async { self.onUpdate?(h, posed, coach); self.onJoints?(seen) }
     }
 }

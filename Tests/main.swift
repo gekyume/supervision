@@ -98,6 +98,8 @@ check(PhoneMessage.parse("0|x") == .pause(minutes: 1, reason: "x"), "floor of 1 
 check(PhoneMessage.parse("workout|done|bridges 8, clamshells 10/10") == .workout(done: true, summary: "bridges 8, clamshells 10/10"), "phone workout result")
 check(PhoneMessage.parse("workout|stopped|bridges 3") == .workout(done: false, summary: "bridges 3"), "a stopped phone workout isn't done")
 check(PhoneMessage.parse("Workout|done|x") == .workout(done: true, summary: "x"), "case doesn't matter")
+check(PhoneMessage.parse("rep|1|5") == .rep(step: 1, reps: 5), "a rep counted on the phone")
+check(PhoneMessage.parse("rep|x") == .rep(step: 0, reps: 0), "a garbled rep never unlocks")
 check(PhoneMessage.isFresh(sentAt: 1000, now: 1200) && !PhoneMessage.isFresh(sentAt: 1000, now: 1400), "5-minute freshness")
 
 // MARK: Clean slate
@@ -141,6 +143,9 @@ check(det.blinks == 2, "two dips and recoveries = two blinks (got \(det.blinks))
 var steady = BlinkRule.Detector()
 for r in [0.3, 0.28, 0.31, 0.27, 0.3] { steady.feed(r) }
 check(steady.blinks == 0, "small wobbles aren't blinks")
+var shallow = BlinkRule.Detector()
+for r in [0.3, 0.3, 0.3, 0.21, 0.29, 0.3, 0.22, 0.3] { shallow.feed(r) }
+check(shallow.blinks == 2, "a 30% dip counts: Vision's eye outline never fully closes (got \(shallow.blinks))")
 
 // MARK: Switching
 section("task switching")
@@ -252,12 +257,18 @@ check(br.reps == 2, "two glute bridges (got \(br.reps))")
 var halfBridge = Rep.Counter.bridge()
 for a in [130.0, 145, 152, 141, 132] { halfBridge.feed(a) }
 check(halfBridge.reps == 0, "a half bridge doesn't count")
-check(WorkoutRule.due(hour: 12, afterHour: 11, tier: "yellow", doneToday: false, triedToday: false), "first break after 11: workout")
-check(!WorkoutRule.due(hour: 12, afterHour: 11, tier: "red", doneToday: false, triedToday: false), "never on red days")
-check(!WorkoutRule.due(hour: 17, afterHour: 11, tier: "green", doneToday: false, triedToday: false), "not from 5 pm")
-check(!WorkoutRule.due(hour: 13, afterHour: 11, tier: "green", doneToday: true, triedToday: false), "once a day")
-check(!WorkoutRule.due(hour: 13, afterHour: 11, tier: "green", doneToday: false, triedToday: false, place: nil), "no workout where the place allows none (Boston, unknown)")
-check(WorkoutRule.due(hour: 13, afterHour: 11, tier: "green", doneToday: false, triedToday: false, place: "standing"), "the office allows the standing set")
+func snack(_ h: Int = 12, tier: String = "yellow", n: Int = 0, last: Bool = false, place: String? = "lying") -> Bool {
+    WorkoutRule.due(hour: h, afterHour: 10, tier: tier, snacksToday: n, perDay: 3, lastBreakWasWorkout: last, place: place)
+}
+check(snack(), "a midday break: exercise snack")
+check(!snack(tier: "red"), "never on red days")
+check(!snack(17), "not from 5 pm")
+check(!snack(9), "not before 10")
+check(snack(n: 2) && !snack(n: 3), "up to 3 a day")
+check(!snack(last: true), "never two breaks in a row")
+check(!snack(place: nil), "no workout where the place allows none (Boston, unknown)")
+check(snack(place: "standing"), "the office allows the standing set")
+check(WorkoutRule.pick(["bridges", "clams"], snacksToday: 0) == "bridges" && WorkoutRule.pick(["bridges", "clams"], snacksToday: 3) == "clams", "exercises rotate")
 var ls = Rep.Counter.legSpread()
 for a in [4.0, 12, 28, 35, 20, 8, 5, 30, 9] { ls.feed(a) }
 check(ls.reps == 2, "two kickbacks / side raises (got \(ls.reps))")

@@ -14,6 +14,19 @@ final class PhoneRelay {
     private var settings = Settings()
     private var timer: Timer?
     private var inFlight = false
+    private var lastPoll = Date.distantPast
+    /// Poll every 2 s instead of 10 while the workout screen is up, so phone reps show quickly.
+    var fast = false
+    /// The phone workout page link (Oct 27): opening it once teaches the phone the Mac's address.
+    var workoutLink: String { "https://raw.githack.com/gekyume/supervision/main/docs/workout.html?t=\(settings.topic)" }
+
+    /// What the Mac's workout screen shows, for the phone page to follow. A separate "-state" topic,
+    /// so the Mac's own poller never reads it as an unlock.
+    func publishState(_ json: String) {
+        guard !settings.topic.isEmpty, let url = URL(string: "https://ntfy.sh/\(settings.topic)-state") else { return }
+        var req = URLRequest(url: url); req.httpMethod = "POST"; req.httpBody = Data(json.utf8); req.timeoutInterval = 8
+        URLSession.shared.dataTask(with: req).resume()
+    }
 
     func start() {
         settings = lenientLoad(Self.file, defaults: Settings()) ?? Settings()
@@ -21,11 +34,15 @@ final class PhoneRelay {
             settings.topic = "sv-" + (0..<4).map { _ in String(format: "%08x", UInt32.random(in: .min ... .max)) }.joined()
             saveJSON(settings, to: Self.file)
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.poll() }
+        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            guard let self = self, self.fast || -self.lastPoll.timeIntervalSinceNow >= 10 else { return }
+            self.poll()
+        }
     }
 
     private func poll() {
         guard !inFlight else { return }
+        lastPoll = Date()
         let since = settings.lastId.isEmpty ? "5m" : settings.lastId
         guard let url = URL(string: "https://ntfy.sh/\(settings.topic)/json?poll=1&since=\(since)") else { return }
         inFlight = true
@@ -51,6 +68,8 @@ final class PhoneRelay {
     private func apply(_ message: String) {
         var c = Control.load()
         switch PhoneMessage.parse(message) {
+        case .rep(let step, let reps):
+            WorkoutSession.shared.phoneRep(step: step, reps: reps)
         case .workout(let done, let summary):
             Engine.shared.phoneWorkout(done: done, summary: summary)
         case .end:

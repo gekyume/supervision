@@ -30,13 +30,15 @@ final class LockScreen {
         pickCount.stringValue = limit > 0 ? "\(n) OF \(limit) PICKED" + (n >= limit ? " · MORE NEED A TYPED REASON" : "") : ""
     }
     /// The movement step before a break's countdown (nil hides it).
-    func setMove(_ cue: String?) { moveCue.stringValue = cue ?? ""; moveCue.isHidden = cue == nil; moveDots.isHidden = cue == nil }
+    func setMove(_ cue: String?) { moveCue.stringValue = cue ?? ""; moveCue.isHidden = cue == nil; moveDots.isHidden = cue == nil; if cue == nil { moveFigure.isHidden = true; moveFigure.joints = [:] } }
+    /// The live dot figure while the stretch is being looked for (Oct 27); hidden once it's seen.
+    let moveFigure = PoseView(frame: .zero)
     private let moveDots = ProgressDots(total: Int(MoveRule.holdSeconds))
     private var wasPosed = false
     /// Live proof the camera sees the stretch: "✓ I see you" while posed, a dot per second held.
     func showMoveProgress(cue: String, held: Double, posed: Bool) {
         moveCue.stringValue = cue + (posed ? "  ·  ✓ I see you" : "")
-        moveCue.isHidden = false; moveDots.isHidden = false
+        moveCue.isHidden = false; moveDots.isHidden = false; moveFigure.isHidden = picking
         let n = min(moveDots.total, Int(held))
         if n > moveDots.filled { Brand.flash(moveDots) }
         moveDots.filled = n
@@ -45,7 +47,7 @@ final class LockScreen {
     }
     /// The stretch was seen: a short celebration, then the cue steps aside.
     func showMoveDone(_ text: String) {
-        moveDots.filled = moveDots.total
+        moveDots.filled = moveDots.total; moveFigure.isHidden = true
         moveCue.stringValue = text; moveCue.isHidden = false; moveDots.isHidden = false
         Brand.flash(moveCue)
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.setMove(nil) }
@@ -248,7 +250,8 @@ final class LockScreen {
         moveCue.font = Brand.display(20, .medium); moveCue.textColor = c.ink; moveCue.alignment = .center
         stack.addArrangedSubview(moveCue)
         stack.addArrangedSubview(moveDots)
-        moveCue.isHidden = moveCue.stringValue.isEmpty || picking; moveDots.isHidden = moveCue.isHidden
+        stack.addArrangedSubview(moveFigure)
+        moveCue.isHidden = moveCue.stringValue.isEmpty || picking; moveDots.isHidden = moveCue.isHidden; moveFigure.isHidden = moveCue.isHidden || moveDots.filled >= moveDots.total
         countdown = NSTextField(labelWithString: "")
         // Every break gets the breathing circle (user, Oct 26: a stretch break had none); only the app
         // picker keeps the bracket frame, since it's a question, not a rest.

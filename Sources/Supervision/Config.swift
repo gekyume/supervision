@@ -31,8 +31,9 @@ struct Config: Codable {
     var eyeBlinks = 20                    // the eye break ends after this many blinks (camera; 0 = timer only)
     var eyeMaxSeconds: Double = 60        // never longer than this
     var eyeNoticeSeconds: Double = 30
-    var workoutOn = true                  // once a day the first break after `workoutAfterHour` is a counted workout (not red days)
-    var workoutAfterHour = 11
+    var workoutOn = true                  // exercise snacks: some breaks from `workoutAfterHour` to 5 pm hold a small counted workout
+    var workoutAfterHour = 10
+    var workoutSnacksPerDay = 3           // never two in a row, never on red days
     var workoutStandingReps = 8              // standing set (office): per leg
     var workoutPromiseOn = true              // "I promise I did it" (honour system, reviewed weekly; false removes it)
     var workoutBridges = 8, workoutClamshells = 10   // lying-down set (POTS-friendly); clamshells per side; grow only if the mornings after look fine

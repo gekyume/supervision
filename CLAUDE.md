@@ -79,9 +79,14 @@ If a `CLAUDE.local.md` exists, it describes the specific person using this insta
 - Micro stretch: every 30 focused min (a clock regular breaks don't reset), a 10-s full-screen stand + reach (seated on
   red days), camera-checked with live coaching ("back up a bit", "come closer"), a heads-up 20 s before; done when
   seen, lets go after 90 s, skip by typing a statement; not near a regular break, an eye break, a call or at night.
-- Workout break: once a day the first regular break after 11 am (not red days, not from 5 pm) is a counted workout,
-  all lying down (POTS): 8 glute bridges + 10 clamshells per side, then a timed sit-and-pause before standing, with the iPhone as a Continuity Camera when it's near (else the Mac's
+- Exercise snacks: up to 3 regular breaks a day (10 am–5 pm, never two in a row, not on red days) hold one small counted
+  exercise, rotating by place: lying (bridges; clamshells both sides; each then a timed sit-and-pause, POTS) or standing
+  (kickbacks; side raises), with the iPhone as a Continuity Camera when it's near (else the Mac's
   camera). The break can't end until it's done (−2 min) or 5 min past; stop by typed statement. `supervisionctl workout` tries it.
+- Places: Wi-Fi tells the app where you are; a new network brings one "Where are you?" card (remembered). Each place
+  sets its workout (`workout` in contexts.json: lying / standing / none). Workouts can also be done on the phone page
+  (docs/workout.html: camera + pose in the browser, result sent to the Mac's relay) and closed with "🤞 I promise I did it"
+  (logged as promised; `workoutPromiseOn` removes it).
 - Night: from 10 pm, 2 min of work then a 10-min break (no nudges, no cards); midnight to 6 am
   the computer is off, whatever's left of the cap.
 - Never keeps you from a meeting: calendar events with a video link or other attendees (not declined)

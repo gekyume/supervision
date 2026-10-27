@@ -15,6 +15,12 @@ enum Previews {
             LockScreen.shared.rewardsOn = true
             save(LockScreen.shared.previewView(frame: frame, title: "", reason: plan.reason, plan: plan, extra: "Drink some water on the way back 💧", countdownText: "6:42"), frame, "\(dir)/lock-\(mode).png")
             save(EyeBreak.shared.previewView(frame: frame), frame, "\(dir)/eye-\(mode).png")
+            save(WorkoutSession.shared.previewView(frame: frame), frame, "\(dir)/workout-\(mode).png")
+            let fig = PoseView(frame: NSRect(x: 0, y: 0, width: 420, height: 250)); fig.wantsLayer = true; fig.layer?.backgroundColor = Brand.c.paper.cgColor
+            fig.joints = ["nose": CGPoint(x: 0.5, y: 0.72), "neck": CGPoint(x: 0.5, y: 0.62), "lS": CGPoint(x: 0.6, y: 0.6), "rS": CGPoint(x: 0.4, y: 0.6),
+                          "lE": CGPoint(x: 0.64, y: 0.78), "rE": CGPoint(x: 0.36, y: 0.78), "lW": CGPoint(x: 0.6, y: 0.95), "rW": CGPoint(x: 0.4, y: 0.95),
+                          "lH": CGPoint(x: 0.56, y: 0.3), "rH": CGPoint(x: 0.44, y: 0.3)]
+            save(fig, fig.frame, "\(dir)/pose-\(mode).png")
             let pickerWin = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false); pickerWin.appearance = Brand.appearance
             LockScreen.shared.previewPicker(in: pickerWin, plan: plan)
             if let v = pickerWin.contentView { save(v, frame, "\(dir)/picker-\(mode).png") }

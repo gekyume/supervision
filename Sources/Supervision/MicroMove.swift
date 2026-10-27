@@ -13,6 +13,7 @@ final class MicroMove {
     private let number = NSTextField(labelWithString: "")
     private let coachLine = NSTextField(labelWithString: "")
     private let dots = ProgressDots(total: 10)
+    private let figure = PoseView(frame: .zero)
     private var handlers: [Card.Handler] = []
     var isShowing: Bool { !windows.isEmpty }
 
@@ -22,6 +23,8 @@ final class MicroMove {
         previousApp = NSWorkspace.shared.frontmostApplication
         var held = 0.0, coach = "", posed = false
         MoveCounter.shared.onUpdate = { h, p, c in held = h; posed = p; coach = c }
+        figure.needStand = needStand; figure.joints = [:]
+        MoveCounter.shared.onJoints = { [weak self] j in self?.figure.joints = j }
         for screen in NSScreen.screens {
             let w = LockWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
             w.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
@@ -74,9 +77,10 @@ final class MicroMove {
         stack.addArrangedSubview(Brand.text(needStand ? "Stand up, both arms overhead" : "Both arms overhead, from your chair", Brand.display(36, .semibold), c.ink, align: .center))
         coachLine.font = Brand.display(22, .medium); coachLine.textColor = c.ink; coachLine.alignment = .center
         stack.addArrangedSubview(coachLine)
-        number.font = Brand.digits(84); number.textColor = c.ink; number.alignment = .center
+        number.font = Brand.digits(64); number.textColor = c.ink; number.alignment = .center
         let framed = BracketView(around: number, padding: 30)
-        stack.setCustomSpacing(26, after: coachLine)
+        stack.addArrangedSubview(figure)
+        stack.setCustomSpacing(18, after: figure)
         stack.addArrangedSubview(framed)
         dots.total = Int(hold); dots.filled = 0
         stack.addArrangedSubview(dots)

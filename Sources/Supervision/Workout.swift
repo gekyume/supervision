@@ -114,10 +114,40 @@ final class WorkoutSession {
     private let phoneStatus = NSTextField(labelWithString: "")
     private var handlers: [Card.Handler] = []
     private var deviceObserver: NSObjectProtocol?
+    private var phoneReps: (step: Int, reps: Int)?
+    private var lastPublished = ""
     var isShowing: Bool { window != nil }
+
+    /// A rep counted by the phone page while it follows this screen (Oct 27).
+    func phoneRep(step: Int, reps: Int) {
+        guard window != nil else { return }
+        if let p = phoneReps, p.step == step, p.reps >= reps { return }
+        phoneReps = (step, reps)
+    }
+
+    /// The phone page follows whatever's on this screen: published when the step or count changes.
+    private func publish(_ steps: [WorkoutStep]?, _ i: Int, _ reps: Int) {
+        var obj: [String: Any] = ["active": steps != nil, "i": i, "reps": reps, "at": Date().timeIntervalSince1970]
+        if let steps { obj["steps"] = steps.map { ["title": $0.title, "kind": $0.kind, "target": $0.target, "hint": $0.hint] } }
+        guard let d = try? JSONSerialization.data(withJSONObject: obj), let json = String(data: d, encoding: .utf8) else { return }
+        let key = "\(steps != nil)|\(i)|\(reps)"
+        guard key != lastPublished else { return }
+        lastPublished = key
+        PhoneRelay.shared.publishState(json)
+    }
 
     /// ME/CFS- and POTS-friendly (user, Oct 26): everything lying down, slow, no position changes mid-set,
     /// and a timed sit-and-pause before standing so blood pressure can catch up.
+    /// One exercise snack: lying-down ones end with the sit-and-pause (POTS); standing ones are one movement, both legs.
+    static func snack(place: String, index: Int, reps: Int, clamReps: Int, pauseSeconds: Int = 30) -> [WorkoutStep] {
+        let pause = WorkoutStep(title: "Sit up, then pause", kind: "pause", target: pauseSeconds, hint: "Sit before you stand. Let your heart rate settle.")
+        if place == "standing" {
+            return WorkoutRule.pick([Array(standing(reps: reps).prefix(2)), Array(standing(reps: reps).suffix(2))], snacksToday: index)
+        }
+        let all = steps(bridges: reps, clamshells: clamReps, pauseSeconds: pauseSeconds)
+        return WorkoutRule.pick([[all[0], pause], [all[1], all[2], pause]], snacksToday: index)
+    }
+
     /// Standing set for places without room to lie down (the office): hand on the desk, slow.
     static func standing(reps: Int) -> [WorkoutStep] {
         [WorkoutStep(title: "Leg kickbacks · first leg", kind: "legs", target: reps, hint: "Hand on the desk, side-on to the camera. Slow kick back."),
@@ -142,10 +172,12 @@ final class WorkoutSession {
             done(ok, (log + (ok ? [] : ["stopped at \(steps[min(i, steps.count - 1)].title) \(reps)/\(steps[min(i, steps.count - 1)].target)"])).joined(separator: ", "))
         }
         counter.begin(steps[0].kind)
-        counter.onUpdate = { r, c in reps = r; coach = c }
-        let screen = NSScreen.main?.frame ?? .zero, size = NSSize(width: 760, height: 560)
-        let w = LockWindow(contentRect: NSRect(x: screen.midX - size.width / 2, y: screen.midY - size.height / 2, width: size.width, height: size.height),
-                           styleMask: .borderless, backing: .buffered, defer: false)
+        var stepAt = Date()   // a count still in flight from the last exercise must not land on the next
+        counter.onUpdate = { r, c in if -stepAt.timeIntervalSinceNow > 0.6 { reps = max(reps, r) }; coach = c }
+        phoneReps = nil; lastPublished = ""; PhoneRelay.shared.fast = true
+        // Full screen (Oct 27: as a panel, the break screen's tag and buttons peeked out around it).
+        let screen = NSScreen.main?.frame ?? .zero, size = screen.size
+        let w = LockWindow(contentRect: screen, styleMask: .borderless, backing: .buffered, defer: false)
         w.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 2)
         w.backgroundColor = Brand.c.paper; w.appearance = Brand.appearance; w.hasShadow = true
         w.contentView = content(size: size, statement: statement, promise: promise ? {
@@ -164,6 +196,8 @@ final class WorkoutSession {
             guard let self = self, self.window != nil else { t.invalidate(); return }
             let s = steps[i]
             if s.kind == "pause" { reps = Int(-stepStarted.timeIntervalSinceNow); coach = "Sitting. \(max(0, s.target - reps)) s, then stand slowly" }
+            else if let p = self.phoneReps, p.step == i, p.reps > reps { reps = p.reps; coach = "📱 Counted on your phone" }
+            self.publish(steps, i, s.kind == "pause" ? 0 : reps)
             self.tag.stringValue = "WORKOUT · STEP \(i + 1) OF \(steps.count)"
             self.phoneStatus.stringValue = self.counter.usingPhone ? "📱 iPhone camera: connected ✓"
                 : (CameraPick.phoneAvailable ? "📱 iPhone found: tap Use iPhone camera" : "📱 iPhone camera: not found · using the Mac's camera")
@@ -173,7 +207,7 @@ final class WorkoutSession {
             self.coachLine.stringValue = coach.isEmpty ? s.hint : coach
             if reps >= s.target {
                 if s.kind != "pause" { log.append("\(s.title.components(separatedBy: " ·").first ?? s.title) \(s.target)") }
-                i += 1; reps = 0; coach = ""; stepStarted = Date()
+                i += 1; reps = 0; coach = ""; stepStarted = Date(); stepAt = Date(); self.phoneReps = nil
                 if i >= steps.count {
                     t.invalidate(); self.counter.stop()
                     self.title.stringValue = "✓ Done"; self.coachLine.stringValue = "Nice work. Back to your break."
@@ -188,10 +222,28 @@ final class WorkoutSession {
         return true
     }
 
+    func previewView(frame: NSRect) -> NSView {
+        let v = content(size: frame.size, statement: "I am stopping my workout even though it is part of my plan", promise: {}, skip: {})
+        tag.stringValue = "WORKOUT · STEP 1 OF 2"; title.stringValue = "Glute bridges"; count.stringValue = "3 / 8"
+        coachLine.stringValue = "📱 Counted on your phone"; phoneStatus.stringValue = "📱 iPhone camera: not found · using the Mac's camera"
+        return v
+    }
+
     func dismiss() { close() }
     private func close() {
         if let o = deviceObserver { NotificationCenter.default.removeObserver(o); deviceObserver = nil }
+        if window != nil { lastPublished = ""; publish(nil, 0, 0) }
+        PhoneRelay.shared.fast = false; phoneReps = nil
         counter.stop(); window?.orderOut(nil); window = nil; handlers = []
+    }
+
+    /// Ink on paper QR code, sharp at any size.
+    static func qr(_ text: String) -> NSImage? {
+        guard let f = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        f.setValue(Data(text.utf8), forKey: "inputMessage"); f.setValue("M", forKey: "inputCorrectionLevel")
+        guard let out = f.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)) else { return nil }
+        let rep = NSCIImageRep(ciImage: out), img = NSImage(size: rep.size); img.addRepresentation(rep)
+        return img
     }
 
     private func content(size: NSSize, statement: String, promise: (() -> Void)?, skip: @escaping () -> Void) -> NSView {
@@ -222,7 +274,18 @@ final class WorkoutSession {
         let row = NSStackView(views: rowViews)
         row.spacing = 10
         stack.addArrangedSubview(row)
-        stack.setCustomSpacing(28, after: row)
+        // The phone page link as a QR code (Oct 27): scan it once and the phone follows this screen.
+        if let qr = Self.qr(PhoneRelay.shared.workoutLink) {
+            let iv = NSImageView(image: qr); iv.imageScaling = .scaleProportionallyUpOrDown
+            iv.translatesAutoresizingMaskIntoConstraints = false
+            iv.widthAnchor.constraint(equalToConstant: 132).isActive = true; iv.heightAnchor.constraint(equalToConstant: 132).isActive = true
+            let words = Brand.text("📱 Count on your phone instead: scan this with the iPhone camera. The page follows this screen, step by step.",
+                                   Brand.display(13, .regular), c.muted, wrap: 300)
+            let qrRow = NSStackView(views: [iv, words]); qrRow.spacing = 16; qrRow.alignment = .centerY
+            stack.setCustomSpacing(22, after: row)
+            stack.addArrangedSubview(qrRow)
+            stack.setCustomSpacing(28, after: qrRow)
+        } else { stack.setCustomSpacing(28, after: row) }
         stack.addArrangedSubview(Brand.text("To stop, type \u{201C}\(statement)\u{201D} and press Return", Brand.mono(11), c.faint, align: .center))
         let field = Brand.field("only if you really need to", width: 480, noPaste: true)
         let norm: (String) -> String = { $0.lowercased().filter { $0.isLetter || $0 == " " }.split(separator: " ").joined(separator: " ") }

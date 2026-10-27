@@ -32,11 +32,19 @@ final class EyeBreak {
         let started = Date()
         var blinks = 0, sinceFace = 99.0
         let usingCamera = blinkTarget > 0 && counter.start()
-        counter.onUpdate = { [weak self] b, f in
-            if b > blinks, let self = self { Brand.flash(self.countdown); self.dots.filled = min(b, self.blinkTarget) }
+        var lastBlinkAt = Date.distantPast
+        counter.onUpdate = { [weak self] b, f, level in
+            guard let self = self else { return }
+            if b > blinks { Brand.flash(self.countdown); self.dots.filled = min(b, self.blinkTarget); lastBlinkAt = Date() }
             blinks = b; sinceFace = f
+            // Live, no video (Oct 27): the eyes on screen open and close with yours.
+            self.eyes.seen = f < 0.6; self.eyes.level = level
+            self.seeLine.stringValue = f >= 0.6 ? "I can't see your face. Turn toward the screen for a moment so blinks count"
+                : -lastBlinkAt.timeIntervalSinceNow < 0.7 ? "✓ Blink!" : "👀 I can see your eyes"
         }
         dots.total = max(1, blinkTarget); dots.filled = 0; dots.isHidden = !usingCamera
+        eyes.isHidden = !usingCamera; seeLine.isHidden = !usingCamera
+        eyes.seen = false; seeLine.stringValue = "Looking for your eyes…"
         let refresh = { [weak self] in
             guard let self = self else { return }
             let elapsed = -started.timeIntervalSinceNow
@@ -48,7 +56,9 @@ final class EyeBreak {
             if BlinkRule.done(blinks: usingCamera ? blinks : 0, target: max(1, self.blinkTarget), elapsed: elapsed,
                               secondsSinceFace: usingCamera ? sinceFace : 99, timerSeconds: Double(seconds), maxSeconds: self.maxSeconds) {
                 self.lastBlinks = usingCamera ? blinks : nil
-                self.timer?.invalidate(); self.timer = nil; self.counter.stop()
+                self.timer?.invalidate(); self.timer = nil
+                if usingCamera { Store.shared.event("eye_camera", "\(blinks) blinks; " + self.counter.summary) }
+                self.counter.stop()
                 if usingCamera && blinks >= self.blinkTarget {
                     // Gamified: say it saw you, then go.
                     let today = Store.shared.eventDetails(kind: "eye_break", since: Day.today).filter { $0.contains("blinks counted") }.count + 1
@@ -69,8 +79,10 @@ final class EyeBreak {
     private let counter = BlinkCounter()
     private let unit = NSTextField(labelWithString: "")
     private let dots = ProgressDots(total: 20)
+    private let eyes = EyesView(frame: .zero)
+    private let seeLine = NSTextField(labelWithString: "")
 
-    func previewView(frame: NSRect) -> NSView { let v = content(frame: frame, statement: "I am ignoring this eye break even though it is good for my health", skip: {}); countdown.stringValue = "14"; unit.stringValue = "BLINKS TO GO"; return v }
+    func previewView(frame: NSRect) -> NSView { let v = content(frame: frame, statement: "I am ignoring this eye break even though it is good for my health", skip: {}); countdown.stringValue = "14"; unit.stringValue = "BLINKS TO GO"; eyes.seen = true; eyes.level = 0.9; seeLine.stringValue = "👀 I can see your eyes"; return v }
 
     private func close() {
         timer?.invalidate(); timer = nil
@@ -94,7 +106,11 @@ final class EyeBreak {
         unit.font = Brand.mono(11, .medium); unit.textColor = c.faint; unit.alignment = .center
         stack.addArrangedSubview(unit)
         stack.addArrangedSubview(dots)
-        stack.setCustomSpacing(56, after: dots)
+        stack.setCustomSpacing(28, after: dots)
+        stack.addArrangedSubview(eyes)
+        seeLine.font = Brand.display(16, .medium); seeLine.textColor = c.ink; seeLine.alignment = .center
+        stack.addArrangedSubview(seeLine)
+        stack.setCustomSpacing(48, after: seeLine)
         stack.addArrangedSubview(Brand.text("To skip, type \u{201C}\(statement)\u{201D} and press Return", Brand.mono(11.5), c.faint, align: .center))
         let field = Brand.field("only if you really need to", width: 520)
         let norm: (String) -> String = { $0.lowercased().filter { $0.isLetter || $0 == " " }.split(separator: " ").joined(separator: " ") }

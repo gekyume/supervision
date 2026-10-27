@@ -107,8 +107,9 @@ enum BlinkRule {
         return secondsSinceFace >= 3 && elapsed >= timerSeconds
     }
 
-    /// One blink = the eyes' openness (height / width) dips below 60% of its open level, then
-    /// recovers above 80%. `open` is a slowly updated baseline of open-eye openness.
+    /// One blink = the eyes' openness (height / width) dips below 75% of its open level, then
+    /// recovers above 88%. `open` is a slowly updated baseline of open-eye openness. (Oct 27: at
+    /// 60% and ~8 frames a second, clear blinks were missed; Vision's eye outline never fully closes.)
     struct Detector {
         var open: Double? = nil
         var closed = false
@@ -116,10 +117,12 @@ enum BlinkRule {
         mutating func feed(_ ratio: Double) {
             guard ratio > 0 else { return }
             let base = open ?? ratio
-            if !closed && ratio < base * 0.6 { closed = true }
-            else if closed && ratio > base * 0.8 { closed = false; blinks += 1 }
+            if !closed && ratio < base * 0.75 { closed = true }
+            else if closed && ratio > base * 0.88 { closed = false; blinks += 1 }
             if !closed { open = base * 0.95 + max(ratio, base * 0.9) * 0.05 }   // drift toward the open level
         }
+        /// 0 (shut) … 1 (as open as usual), for the live eyes on screen.
+        func level(_ ratio: Double) -> Double { guard let o = open, o > 0 else { return 1 }; return min(1.2, max(0, ratio / o)) }
     }
 }
 
@@ -293,11 +296,15 @@ enum Rep {
 }
 
 enum WorkoutRule {
-    /// The daily workout break: the first regular break from `afterHour`, not on red days, not from
-    /// 5 pm (the evening rule for movement), once a day.
-    static func due(hour: Int, afterHour: Int, tier: String, doneToday: Bool, triedToday: Bool, place: String? = "lying") -> Bool {
-        hour >= afterHour && hour < 17 && tier != "red" && !doneToday && !triedToday && place != nil
+    /// Exercise "snacks" through the day (Oct 26: "work these in throughout the day"): a regular break
+    /// from `afterHour` until 5 pm becomes a small workout, up to `perDay` a day, never two breaks in a
+    /// row (movement, then rest), never on red days, only where the place allows one.
+    static func due(hour: Int, afterHour: Int, tier: String, snacksToday: Int, perDay: Int, lastBreakWasWorkout: Bool, place: String? = "lying") -> Bool {
+        hour >= afterHour && hour < 17 && tier != "red" && snacksToday < perDay && !lastBreakWasWorkout && place != nil
     }
+
+    /// Which exercise this snack is: they rotate through the place's list.
+    static func pick<T>(_ options: [T], snacksToday: Int) -> T { options[snacksToday % options.count] }
 }
 
 // MARK: - Breaks around meetings
@@ -326,6 +333,8 @@ enum PhoneMessage: Equatable {
     case pause(minutes: Int, reason: String?)
     /// From the phone workout page: "workout|done|<summary>" or "workout|stopped|<summary>".
     case workout(done: Bool, summary: String)
+    /// From the phone page while it follows the Mac's workout (Oct 27): "rep|<step index>|<reps>".
+    case rep(step: Int, reps: Int)
 
     /// "<minutes>|<reason>" → pause 1–120 min; "end…" → resume. Anything else still unlocks
     /// (30 min): a tap on the phone must never silently fail.
@@ -335,6 +344,10 @@ enum PhoneMessage: Equatable {
         if text.lowercased().hasPrefix("workout|") {
             let w = text.split(separator: "|", maxSplits: 2).map(String.init)
             return .workout(done: w.count > 1 && w[1].lowercased() == "done", summary: w.count > 2 ? w[2] : "")
+        }
+        if text.lowercased().hasPrefix("rep|") {
+            let r = text.split(separator: "|").map(String.init)
+            return .rep(step: r.count > 1 ? Int(r[1]) ?? 0 : 0, reps: r.count > 2 ? Int(r[2]) ?? 0 : 0)
         }
         let parts = text.split(separator: "|", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespaces) }
         let mins = parts.first.flatMap { Int($0.filter(\.isNumber)) }.map { min(max($0, 1), 120) } ?? 30

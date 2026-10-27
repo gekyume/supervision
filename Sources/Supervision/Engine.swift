@@ -21,6 +21,7 @@ final class Engine {
     private var syncRunning = false, lastSyncTry = Date.distantPast
     private var movePending: (duration: Double, needStand: Bool, started: Date, held: Double, cameraOK: Bool)?
     private var movePosed = false, moveCoach = ""
+    private var lastBreakHadWorkout = false   // movement, then rest: never two workout breaks in a row
     private var workoutPending = false   // this break holds a counted workout; it can't end until done (or 5 min past)
     private var insightRunning = false, pendingInsight: (text: String, evidence: String)?
     private var lastSwitchNudge = Date.distantPast
@@ -554,7 +555,13 @@ final class Engine {
             switch r {
             case .ok(let rec): Store.shared.event("whoop_fetch", "recovery \(rec), fetched by the app")
             case .notScoredYet: break
-            case .failed(let why): Store.shared.event("whoop_fetch", "failed: \(why)")
+            case .failed(let why):
+                Store.shared.event("whoop_fetch", "failed: \(why)")
+                if why.contains("authenticate"), Store.shared.lastEvent(kind: "signin_card", since: Day.today) == nil {
+                    Store.shared.event("signin_card", "Claude CLI signed out")
+                    Card.shared.ask("I can't reach Whoop 🔑", body: "The Claude sign-in on this Mac expired, so the Whoop reading, the nightly sheet sync and the daily notice are all paused. In Terminal: claude, then /login with your personal account. Or ask Claude in chat.",
+                                    buttons: [("Got it", {})], seconds: 600, tag: "Sign-in", onTimeout: {})
+                }
             }
         }
     }
@@ -697,12 +704,12 @@ final class Engine {
     }
 
     /// The counted workout. In a break it holds the break's end and takes 2 min off when done.
-    @discardableResult private func startWorkout(inBreak: Bool, tryReps: Int = 0) -> Bool {
+    @discardableResult private func startWorkout(inBreak: Bool, tryReps: Int = 0, snackIndex: Int? = nil) -> Bool {
         // The set follows the place (Oct 26): lying-down at home and at the parents', standing at the office.
         let standing = contexts.active.workout == "standing"
-        let steps = standing ? WorkoutSession.standing(reps: tryReps > 0 ? tryReps : config.workoutStandingReps)
+        let steps = snackIndex.map { WorkoutSession.snack(place: contexts.active.workout ?? "lying", index: $0, reps: standing ? config.workoutStandingReps : config.workoutBridges, clamReps: config.workoutClamshells) } ?? (standing ? WorkoutSession.standing(reps: tryReps > 0 ? tryReps : config.workoutStandingReps)
             : tryReps > 0 ? WorkoutSession.steps(bridges: tryReps, clamshells: tryReps, pauseSeconds: 10)
-                          : WorkoutSession.steps(bridges: config.workoutBridges, clamshells: config.workoutClamshells)
+                          : WorkoutSession.steps(bridges: config.workoutBridges, clamshells: config.workoutClamshells))
         let ok = WorkoutSession.shared.show(steps: steps, statement: config.workoutStopStatement, promise: config.workoutPromiseOn) { [weak self] finished, summary in
             guard let self = self else { return }
             Store.shared.event("workout", (finished ? "done: " : "stopped: ") + summary + (inBreak ? "" : " (asked for in chat)"))
@@ -711,7 +718,7 @@ final class Engine {
                 if finished, let u = self.breakUntil { self.breakUntil = max(Date(), u.addingTimeInterval(-120)); self.saveBreakState() }
             }
         }
-        if ok { Store.shared.event("workout_started", inBreak ? "daily workout break" : "asked for in chat"); if inBreak { workoutPending = true } }
+        if ok { Store.shared.event("workout_started", inBreak ? "exercise snack \((snackIndex ?? 0) + 1) of \(config.workoutSnacksPerDay): " + steps.filter { $0.kind != "pause" }.map(\.title).joined(separator: ", ") : "asked for in chat"); if inBreak { workoutPending = true } }
         else { Store.shared.event("workout_started", WorkoutSession.shared.isShowing ? "already open" : "no Mac camera: skipped (the phone page still works)") }
         return ok
     }
@@ -793,17 +800,21 @@ final class Engine {
         }
         LockScreen.shared.show(title: title, reason: reason, plan: plan, extra: careLine())
         // Every regular break starts with a checked stretch (not night breaks, locks or hours off).
-        let doneToday = Store.shared.eventDetails(kind: "workout", since: Day.today).contains { $0.hasPrefix("done") }
-        let triedToday = Store.shared.lastEvent(kind: "workout_started", since: Day.today) != nil
+        let snacks = Store.shared.eventDetails(kind: "workout_started", since: Day.today).filter { $0.hasPrefix("exercise snack") }.count
+        let wasWorkout = lastBreakHadWorkout; lastBreakHadWorkout = false
         if config.workoutOn, plan != nil, !nightBreak, !dayLocked, !resumed,
-           WorkoutRule.due(hour: hourNow, afterHour: config.workoutAfterHour, tier: tier, doneToday: doneToday, triedToday: triedToday, place: contexts.active.workout),
-           startWorkout(inBreak: true) {
+           WorkoutRule.due(hour: hourNow, afterHour: config.workoutAfterHour, tier: tier, snacksToday: snacks, perDay: config.workoutSnacksPerDay,
+                           lastBreakWasWorkout: wasWorkout, place: contexts.active.workout),
+           startWorkout(inBreak: true, snackIndex: snacks) {
+            lastBreakHadWorkout = true
             // the workout is this break's movement
         } else if config.moveCheckOn, plan != nil, !nightBreak, !dayLocked, !resumed {
             let needStand = tier != "red"
             let ok = MoveCounter.shared.start(needStand: needStand)
             movePending = (until.timeIntervalSinceNow, needStand, Date(), 0, ok)
             MoveCounter.shared.onUpdate = { [weak self] held, posed, coach in self?.movePending?.held = held; self?.movePosed = posed; self?.moveCoach = coach }
+            LockScreen.shared.moveFigure.needStand = needStand
+            MoveCounter.shared.onJoints = { j in LockScreen.shared.moveFigure.joints = j }
         }
         if !resumed { saveBreakState() }
     }

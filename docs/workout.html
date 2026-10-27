@@ -79,6 +79,7 @@ const $ = id => document.getElementById(id);
 const v = $("v"), cv = $("c"), ctx = cv.getContext("2d");
 let pose, i = 0, reps = 0, armed = false, stepStart = 0, running = false, done = [], wake;
 let facing = "user";   // front camera, so you can see yourself (Oct 26)
+let follow = null;     // the Mac's workout screen, when one is up (Oct 27: "always update to whatever is on my screen")
 
 function counter(kind) { return kind === "bridges" ? { enter: 158, exit: 140 } : kind === "legs" ? { enter: 25, exit: 10 } : { enter: 30, exit: 12 }; }
 function angle(a, b, c) {
@@ -89,7 +90,11 @@ function angle(a, b, c) {
 function feed(val, kind) {               // both kinds start by rising past `enter`
   const t = counter(kind);
   if (!armed) { if (val > t.enter) armed = true; return false; }
-  if (val < t.exit) { armed = false; reps++; navigator.vibrate?.(30); return true; }
+  if (val < t.exit) {
+    armed = false; reps++; navigator.vibrate?.(30);
+    if (follow && topic) fetch(`https://ntfy.sh/${topic}`, { method: "POST", body: `rep|${i}|${reps}` }).catch(() => {});
+    return true;
+  }
   return false;
 }
 function render() {
@@ -111,6 +116,7 @@ function next() {
   const s = steps[i];
   if (s.kind !== "pause") done.push(`${s.title.split(" ·")[0].toLowerCase()} ${s.target}`);
   i++; reps = 0; armed = false; stepStart = performance.now();
+  if (i >= steps.length && follow) { running = false; $("title").textContent = "✓ Nice work"; $("count").textContent = "✓"; $("stop").hidden = true; wake?.release?.(); $("coach").textContent = "Your Mac has the count."; return; }
   if (i >= steps.length) { running = false; $("title").textContent = "✓ Nice work"; $("count").textContent = "✓"; $("stop").hidden = true; wake?.release?.(); send(true); return; }
   $("coach").textContent = steps[i].kind === steps[i - 1].kind ? "Switch sides" : steps[i].hint;
   render();
@@ -177,7 +183,36 @@ $("promise").onclick = () => {
   done = ["promised: " + steps.filter(s => s.kind !== "pause").map(s => `${s.title.split(" ·")[0].toLowerCase()} ${s.target}`).join(", ")];
   i = steps.length - 1; $("title").textContent = "✓ Counted on your word"; $("stop").hidden = true; send(true);
 };
-$("stop").onclick = () => { running = false; $("stop").hidden = true; wake?.release?.(); send(false); };
+$("stop").onclick = () => { running = false; $("stop").hidden = true; wake?.release?.(); if (follow) { $("go").hidden = false; $("coach").textContent = "Paused here. Your Mac's workout is still on."; } else send(false); };
+
+// Follow the Mac (Oct 27): the Mac publishes its workout screen to "<topic>-state"; this page shows the
+// same exercise and step, and sends each rep it counts back ("rep|step|reps"). No workout up = the page's own sets.
+const kindOf = k => k === "clamshells" ? "clam" : k;
+function applyState(st) {
+  const live = st && st.active && Date.now() / 1000 - (st.at || 0) < 1800;
+  if (!live) {
+    if (follow) { follow = null; running = false; wake?.release?.(); $("stop").hidden = true; $("go").hidden = false; $("set").hidden = false;
+      $("title").textContent = "✓ Your Mac's workout is over"; $("count").textContent = ""; $("coach").textContent = "Nothing to follow right now."; }
+    return;
+  }
+  const same = follow && JSON.stringify(follow.steps) === JSON.stringify(st.steps);
+  follow = st;
+  if (!same) { steps = st.steps.map(x => ({ ...x, kind: kindOf(x.kind) })); done = []; i = -1; }
+  if (st.i !== i) { i = Math.min(st.i, steps.length - 1); reps = 0; armed = false; stepStart = performance.now(); if (running) $("coach").textContent = steps[i].hint; }
+  if ((st.reps || 0) > reps && steps[i].kind !== "pause") reps = st.reps;
+  $("set").hidden = true; $("note").hidden = running; $("note").textContent = "Following your Mac's workout. Tap Start, prop the phone where it can see you.";
+  render();
+}
+function followMac() {
+  if (!topic) return;
+  fetch(`https://ntfy.sh/${topic}-state/json?poll=1&since=15m`).then(r => r.text()).then(t => {
+    const last = t.trim().split("\n").filter(Boolean).map(l => JSON.parse(l)).filter(m => m.event === "message").pop();
+    if (last) applyState(JSON.parse(last.message));
+  }).catch(() => {});
+  const es = new EventSource(`https://ntfy.sh/${topic}-state/sse`);
+  es.onmessage = e => { try { const m = JSON.parse(e.data); if (m.event === "message") applyState(JSON.parse(m.message)); } catch {} };
+}
+followMac();
 render();
 </script>
 </body>
