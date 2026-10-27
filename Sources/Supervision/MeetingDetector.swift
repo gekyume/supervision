@@ -3,17 +3,17 @@ import ApplicationServices
 import CoreAudio
 import CoreMediaIO
 
-/// Context awareness for the break lock. A takeover in the middle of a call or a
-/// screen share is the fastest way to lose trust in the app, so we check four
-/// signals: Zoom's in-meeting process, the camera, the microphone, and meeting
-/// windows in browsers/Teams/Slack. Any one of them defers the break.
+/// Context awareness for the break lock. A takeover in the middle of a call is the
+/// fastest way to lose trust in the app. Zoom's own in-meeting process (`ZoomGuard`)
+/// is trusted fully; the softer signals below (camera, meeting windows) can defer a
+/// break for `Config.maxDeferralMinutes`. `microphoneInUse` is kept for diagnostics only.
 enum MeetingDetector {
     /// Returns a human-readable reason if a call seems to be in progress, else nil.
     static func activeCall() -> String? {
-        if ZoomGuard.inMeeting() { return "You're in a Zoom call" }
         if cameraInUse() { return "Your camera is on" }
         if let w = meetingWindow() { return "'\(w)' looks like a live call" }
-        if microphoneInUse() { return "Your microphone is in use" }
+        // The microphone alone is not a call: recorders (screenpipe), dictation and Loom keep
+        // it open all day, which once deferred every break for an hour (Sep 25).
         return nil
     }
 
@@ -78,5 +78,15 @@ enum MeetingDetector {
             }
         }
         return nil
+    }
+}
+
+/// Zoom in-meeting detection: Zoom spawns a `CptHost` process only while in a call.
+enum ZoomGuard {
+    static func inMeeting() -> Bool {
+        let p = Process(); p.launchPath = "/usr/bin/pgrep"; p.arguments = ["-x", "CptHost"]
+        p.standardOutput = Pipe(); p.standardError = Pipe()
+        do { try p.run(); p.waitUntilExit() } catch { return false }
+        return p.terminationStatus == 0
     }
 }

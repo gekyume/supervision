@@ -5,8 +5,8 @@ energy-limiting conditions.**
 
 If thinking hard on a screen makes you crash a day or two later, "stop when it hurts" is
 always too late. Supervision sits behind you while you work and stops you *before* it hurts:
-short work blocks, a full-screen rest you can't click past, three quick faces after each
-break, and a daily budget that grows only when your body says it's ready.
+short work blocks, a full-screen rest you can't click past, four quick 1–10 numbers after
+each break, and a daily budget that grows only when your body says it's ready.
 
 > ⚠️ Early and evolving. Not medical advice. Built by someone living with ME/CFS, for their
 > own use first. Talk to a clinician who knows ME/CFS.
@@ -16,9 +16,9 @@ break, and a daily budget that grows only when your body says it's ready.
   wearable's recovery score (or the middle tier if you don't have one).
 - **A real rest screen.** Full-screen, every display, no app switching. It explains *why*
   with numbers, offers up to three alternatives (stretch, a slow walk, journal on paper…),
-  and never appears during a call (calendar, Zoom, camera, mic, meeting windows).
-- **Three faces after each break:** brain fog, headache, how crashy. If they climb, the day
-  gets gentler or ends, framed as the experiment working, not a failure.
+  and never appears during a call (calendar, Zoom, camera, meeting windows).
+- **Four quick numbers after each break** (1 = worst, 10 = best): brain fog, headache, crash,
+  overall. If they drop, the day gets gentler or ends, framed as the experiment working, not a failure.
 - **A weighted budget.** Meetings cost more than email; context-switching adds up; paper
   work counts at half. A 3-day cap protects against boom-and-bust.
 - **Earns capacity back.** Each day is judged by the two mornings after it. Three clean days

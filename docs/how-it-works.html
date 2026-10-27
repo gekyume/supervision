@@ -43,15 +43,15 @@
     <text x="24" y="36" class="gold">Inputs</text>
     <text x="24" y="64">🩺 Whoop, each morning</text><text x="40" y="82" class="m">recovery · resting HR · HRV · sleep</text>
     <text x="24" y="106">🖥️ What's on screen, every 5 s</text><text x="40" y="124" class="m">app + window title → kind of work</text>
-    <text x="24" y="148">📅 Calendar &amp; live calls</text><text x="40" y="166" class="m">meetings, Zoom, camera, mic</text>
-    <text x="24" y="190">🙂 Your faces &amp; flags</text><text x="40" y="208" class="m">fog · headache · crashy · travel</text>
+    <text x="24" y="148">📅 Calendar &amp; live calls</text><text x="40" y="166" class="m">meetings, Zoom, camera</text>
+    <text x="24" y="190">🔢 Your 1–10 numbers &amp; flags</text><text x="40" y="208" class="m">fog · tired · headache · crash · overall</text>
     <text x="24" y="232">📍 Where you are (Wi-Fi)</text>
 
     <path class="arrow" d="M240 125 L300 125"/>
     <rect class="box" x="300" y="40" width="230" height="170"/>
     <text x="314" y="66" class="gold">Decisions</text>
-    <text x="314" y="94">Today's tier &amp; block length</text>
-    <text x="314" y="118">Today's weighted budget</text>
+    <text x="314" y="94">Today's tier &amp; first block</text>
+    <text x="314" y="118">Next block's length</text>
     <text x="314" y="142">Which break, and why</text>
     <text x="314" y="166">The symptom gate</text>
     <text x="314" y="190">The ramp (every 2 weeks)</text>
@@ -69,41 +69,35 @@
   </svg>
 
   <h2>The day, one block at a time</h2>
-  <svg viewBox="0 0 820 150" role="img" aria-label="Work block, short rest, three faces, gate, repeat">
-    <rect class="box" x="10" y="35" width="160" height="70"/><text x="26" y="62">Work block</text><text x="26" y="84" class="m">30 / 25 / 15 min by tier</text>
+  <svg viewBox="0 0 820 150" role="img" aria-label="Work block, short rest, how-are-you card, gate, repeat">
+    <rect class="box" x="10" y="35" width="160" height="70"/><text x="26" y="62">Work block</text><text x="26" y="84" class="m">15–45, set by your card</text>
     <path class="arrow" d="M170 70 L200 70"/>
     <rect class="box" x="200" y="35" width="160" height="70"/><text x="216" y="62">Short rest</text><text x="216" y="84" class="m">5–10 min; long one per 2 h</text>
     <path class="arrow" d="M360 70 L390 70"/>
-    <rect class="box" x="390" y="35" width="150" height="70"/><text x="406" y="62">Three faces</text><text x="406" y="84" class="m">fog · headache · crashy</text>
+    <rect class="box" x="390" y="35" width="150" height="70"/><text x="406" y="62">How-are-you card</text><text x="406" y="84" class="m">5 × 1–10, optional</text>
     <path class="arrow" d="M540 70 L570 70"/>
     <rect class="box" x="570" y="20" width="240" height="100"/><text x="586" y="44" class="gold">The gate</text>
     <text x="586" y="66" class="g">steady → next block</text>
-    <text x="586" y="86" class="y">up 1 → shorter blocks, plain rest</text>
-    <text x="586" y="106" class="r">up 2 (or any face 4+) → done today</text>
+    <text x="586" y="86" class="y">down 2 → shorter blocks, rest</text>
+    <text x="586" y="106" class="r">down 3 / any ≤ 3 → asks: rest an hour?</text>
     <path class="arrow" d="M690 120 C690 145 90 145 90 108"/>
   </svg>
-  <p>"Up" means compared with your <strong>first reading of the day</strong>, so a foggy morning doesn't count against you. Stopping at the gate is the experiment working, not a failure. Skipping the faces is allowed; it just means no reading.</p>
+  <p>When a break ends, one tap ("how did that go?") releases the screen, and a small card pops up top-right: overall, how's my head, clear (no brain fog), energy and not crashing, each <strong>1 = really bad, 10 = the best</strong>, plus a one-line note for what you did ("drank water"). All optional, never blocking. The same card opens any time you rest the pointer in the top-right corner. Only <strong>clear, head and not-crashing</strong> count (energy and overall are logged, never gated). "Down" is compared with your <strong>first answer to that question today</strong>; the second hour-off in a day ends the day (after a break or from the top-right corner check), so a foggy morning doesn't count against you. Stopping at the gate is the experiment working, not a failure.</p>
 
-  <h2>Tiers: the morning number sets the day</h2>
+  <h2>Blocks follow how you are</h2>
   <div class="grid">
-    <div class="card"><span class="pill g">Green · recovery ≥ 67</span><p><strong>30-min blocks</strong>, 5-min rests, base <strong>180</strong> weighted minutes. Walks, Pilates (once, before 3 pm), foot PT, stretching, journal, plan, rap, poetry.</p></div>
-    <div class="card"><span class="pill y">Yellow · 34–66</span><p><strong>25-min blocks</strong>, 7-min rests, base <strong>150</strong>. Stretch, foot PT, journal, plan, music.</p></div>
-    <div class="card"><span class="pill r">Red · &lt; 34</span><p><strong>15-min blocks</strong>, 10-min rests, base <strong>90</strong>. Rest and music only.</p></div>
+    <div class="card"><span class="pill g">Green · recovery ≥ 67</span><p>First block <strong>30 min</strong>, 5-min breaks. Walks, Pilates (once, before 3 pm), foot PT, stretching, journal, plan, rap, poetry.</p></div>
+    <div class="card"><span class="pill y">Yellow · 34–66</span><p>First block <strong>25 min</strong>, 7-min breaks. Stretch, foot PT, journal, plan, music.</p></div>
+    <div class="card"><span class="pill r">Red · &lt; 34</span><p>First block <strong>15 min</strong>, 10-min breaks. Rest and music only.</p></div>
   </div>
-  <p>No Whoop reading yet? Treated as yellow. Physical movement is gated by the tier and a heart-rate ceiling (<strong>resting HR + 15</strong>), not by the work budget. A walk doesn't spend screen minutes.</p>
+  <p>Short sleep, a travel day or a stress flag start you <strong>5 min shorter</strong>. After that, every how-are-you card moves the <strong>next</strong> block: steady or better with overall 7+ → <strong>+5 min</strong>; clear, head or not-crashing down 1 → <strong>−5 min</strong>; always between 15 and 45. Skip the card and it stays put. No Whoop reading yet? Treated as yellow.</p>
+  <p>Breaks are for standing up, stretching, looking far away (20-20-20) and planning what's next. Every 2 hours one of them is a 15-minute lie-down.</p>
 
-  <h2>The budget is weighted, not raw</h2>
-  <table>
-    <tr><th>Kind of work</th><th>Weight</th><th>Why</th></tr>
-    <tr><td>Admin, email, light comms</td><td>0.8×</td><td>Low demand, but context-switchy</td></tr>
-    <tr><td>Reading, writing, analysis, building</td><td>1.0×</td><td>Demanding but steady</td></tr>
-    <tr><td>Video editing (CapCut etc.)</td><td>1.2×</td><td>Visual + decisions, continuous</td></tr>
-    <tr><td>Video meetings</td><td>1.3×</td><td>Looking + listening + performing</td></tr>
-    <tr><td>Meetings you flag "intense"</td><td>1.6×</td><td>Emotional load is a commonly reported trigger</td></tr>
-    <tr><td>Heavy context switching</td><td>+10% per hour</td><td>Divided attention is the hardest thing for ME/CFS cognition</td></tr>
-    <tr><td>Off-screen work you tell Claude about</td><td>0.5×</td><td>Thinking still counts; the screen bundle doesn't</td></tr>
-  </table>
-  <p>Same-day dips, never permanent: sleep under 6 h −25% · travel day −30% · stress flag or a 😕 check-in −30% · a heavy yesterday caps today at 75%. And the real guard rail: <strong>the 3-day rolling total can't exceed 2.5× your base.</strong> One big day is fine. Three in a row is what neither doctor wants.</p>
+  <h2>One cap: 8 hours on the computer</h2>
+  <p>Every active minute at the screen counts, meetings and scrolling included. At 8 hours the screen locks for the day: whatever's left can happen off the computer. The kinds of work are still weighted in the logs (meetings 1.3×, intense meetings 1.6×, admin 0.8×…) so we can learn which work costs you most, but they don't lock anything.</p>
+
+  <h2>Nights</h2>
+  <p>From <strong>10 pm</strong> the computer blinks: 2 minutes of work, then a 10-minute break, with no nudges or cards in between. At <strong>midnight</strong> it's off until 6 am, however much of the 8 hours is left.</p>
 
   <h2>Earning it back</h2>
   <svg viewBox="0 0 820 130" role="img" aria-label="A day is judged by the two mornings after it">
@@ -115,18 +109,19 @@
     <path class="arrow" d="M540 60 L580 60"/>
     <rect class="box" x="580" y="15" width="230" height="95"/><text x="600" y="40" class="gold">Verdict on day D</text>
     <text x="600" y="62" class="g">clean → streak +1</text>
-    <text x="600" y="82" class="m">3 clean days → +20 min base,</text>
-    <text x="600" y="100" class="m">+5 min blocks, new experiment</text>
+    <text x="600" y="82" class="m">3 clean days → starting blocks</text>
+    <text x="600" y="100" class="m">+5 min, new experiment</text>
   </svg>
-  <p><strong>Clean</strong> means: neither following morning is red, resting HR within +4 of your 28-day median, no crash flagged, the gate didn't fire. Capacity <strong>drops 15% for 14 days only on a pattern</strong>: a crash, two red mornings in a week, or resting HR up 5+ for three days straight. A single bad day changes that day only. Caps: 6 hours base, 45-minute blocks, never more than +20% a month.</p>
+  <p><strong>Clean</strong> means: neither following morning is red, resting HR within +4 of your 28-day median, no crash flagged, the gate didn't end the day. Starting blocks <strong>shrink by 5 min for 14 days only on a pattern</strong>: a crash, two red mornings in a week, or resting HR up 5+ for three days straight. A single bad day changes that day only.</p>
 
   <h2>Breaks: what you get and why</h2>
   <p>Every break screen shows the activity, the instructions, the numbers behind the choice, and up to three alternatives you can tap. When it keeps you on plain rest it says what you'd rather be doing, the specific gate ("you're at 140 of 150"), and what would unlock the other options. Movement is always followed by rest; never two active breaks in a row; none after 5 pm.</p>
 
   <h2>What never happens</h2>
   <ul>
-    <li>A lock during a call: calendar events with video links (±10 min), Zoom's in-meeting process, camera, mic, and meeting windows all defer it.</li>
-    <li>More than one nudge per block, or more than two check-in cards a day. Eat/water reminders ride on the break screen.</li>
+    <li>Missing a meeting: a break is trimmed to end 5 minutes before your next meeting (video link or other attendees), and any longer lock steps aside 5 minutes before and comes back after if there's time left.</li>
+    <li>A lock during a call: calendar events with video links (±10 min), Zoom's in-meeting process, camera and meeting windows all defer it.</li>
+    <li>More than one nudge per block. The how-are-you card pops up after a break but never blocks anything; eat/water reminders ride on the break screen.</li>
     <li>The words "push through" or "dangerous." A missed limit is logged as data.</li>
     <li>A capacity change from one bad day.</li>
   </ul>

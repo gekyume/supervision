@@ -21,10 +21,10 @@ struct Contexts: Codable {
     ]
     static let file = Config.dir.appendingPathComponent("contexts.json")
     static func load() -> Contexts {
-        if let d = try? Data(contentsOf: file), let c = try? JSONDecoder().decode(Contexts.self, from: d) { return c }
+        if let c = lenientLoad(file, defaults: Contexts()) { return c }
         let c = Contexts(); c.save(); return c
     }
-    func save() { let e = JSONEncoder(); e.outputFormatting = [.prettyPrinted, .sortedKeys]; try? e.encode(self).write(to: Contexts.file) }
+    func save() { saveJSON(self, to: Contexts.file) }
     var active: WorkContext { contexts.first { $0.name == current } ?? contexts[0] }
 
     /// Current Wi-Fi name via `ipconfig` (CoreWLAN needs Location permission on modern macOS).
@@ -52,17 +52,11 @@ struct Baseline: Codable {
     var note: String = ""
     static let file = Config.dir.appendingPathComponent("baseline.json")
     static func load() -> Baseline {
-        guard let d = try? Data(contentsOf: file), let b = try? JSONDecoder().decode(Baseline.self, from: d) else { return Baseline() }
-        return b
+        lenientLoad(file, defaults: Baseline()) ?? Baseline()
     }
-    var isToday: Bool {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return date == f.string(from: Date())
-    }
-    /// Green ≥ 67, yellow 34–66, red < 34 (Whoop's own bands). Unknown counts as yellow.
-    var tier: String {
-        guard isToday, let r = recovery else { return "unknown" }
-        return r >= 67 ? "green" : r >= 34 ? "yellow" : "red"
-    }
+    var isToday: Bool { date == Day.string(Date()) }
+    /// Today's tier; a stale or missing reading is "unknown" (treated as yellow).
+    var tier: String { Tier.from(recovery: isToday ? recovery : nil) }
     var hrCeiling: Int? { restingHR.map { $0 + 15 } }
 }
 
@@ -76,8 +70,8 @@ struct Activity {
     let minTier: String       // lowest recovery tier that allows it: "red" < "yellow" < "green"
 
     static let catalog: [String: Activity] = [
-        "rest": Activity(key: "rest", title: "Eyes closed, lying down", emoji: "🌙", minutes: 10, load: "none",
-                         instructions: "Lie back, close your eyes. In for 4, out for 6. No screens, no podcasts.", minTier: "red"),
+        "rest": Activity(key: "rest", title: "Up, look far, then eyes closed", emoji: "🌙", minutes: 10, load: "none",
+                         instructions: "Stand up and stretch your legs. Look out a window at something far away for 20 seconds (20-20-20). Then lie back, eyes closed, breathing with the circle: 5.5 seconds in, 5.5 out. No screens, no podcasts. Good moment to plan what's next.", minTier: "red"),
         "music": Activity(key: "music", title: "Music, eyes closed", emoji: "🎧", minutes: 10, load: "none",
                           instructions: "Headphones on, eyes closed, lying down. Something you don't have to think about.", minTier: "red"),
         "stretch": Activity(key: "stretch", title: "Gentle stretch, then rest", emoji: "🧘", minutes: 10, load: "physical",
@@ -97,7 +91,6 @@ struct Activity {
         "poetry": Activity(key: "poetry", title: "Write a poem, on paper", emoji: "✒️", minutes: 10, load: "cognitive",
                            instructions: "Pen and paper, 5 minutes, then eyes closed.", minTier: "green"),
     ]
-    static let tierRank = ["red": 0, "yellow": 1, "green": 2, "unknown": 1]
 }
 
 // MARK: - Voice: the same message should never read the same way twice in a row
@@ -138,11 +131,11 @@ enum Planner {
     struct Inputs {
         var baseline: Baseline
         var context: WorkContext
-        var loadPercent: Double          // of today's budget used (focused + meetings)
-        var focusedMinutes: Double
-        var budgetMinutes: Double
+        var loadPercent: Double          // share of today's computer-time cap used
+        var usedMinutes: Double          // computer minutes so far today
+        var capMinutes: Double
         var meetingMinutes: Double
-        var lastCheckin: Int?            // 1–5, today only
+        var lastOverall: Int?            // latest "overall" answer today, 1 worst … 10 best
         var hour: Int
         var breaksToday: [String]        // activity keys, in order, completed or not
         var activeBreaksToday: Int       // physical+cognitive breaks done today
@@ -154,9 +147,9 @@ enum Planner {
         let n = i.breaksToday.count
         var facts: [String] = []
         if let r = i.baseline.recovery, i.baseline.isToday { facts.append("Whoop recovery \(r) (\(tier))") } else { facts.append("no Whoop reading today, so I treat it as yellow") }
-        facts.append("\(Int(i.focusedMinutes)) of \(Int(i.budgetMinutes)) focused minutes used")
+        facts.append("\(Int(i.usedMinutes)) of \(Int(i.capMinutes)) computer minutes used")
         if i.meetingMinutes > 0 { facts.append("\(Int(i.meetingMinutes)) min of meetings") }
-        if let c = i.lastCheckin { facts.append("last check-in \(c)/5") }
+        if let o = i.lastOverall { facts.append("overall \(o)/10 last time you told me") }
 
         // The things the user actually wants, in this context, named back to them.
         let wishes = i.context.activities.compactMap { Activity.catalog[$0] }.filter { $0.load != "none" }
@@ -165,9 +158,9 @@ enum Planner {
         // Hard gates → true rest, with the specific gate and what would unlock the rest.
         var gate: (why: String, unlock: String)? = nil
         if tier == "red" { gate = ("your Whoop recovery is \(i.baseline.recovery ?? 0), a red day, and movement on red days is what turns a bad day into a bad week", "a yellow morning brings stretching, foot PT and journaling back; green brings walks and Pilates") }
-        else if let c = i.lastCheckin, c <= 2 { gate = ("you told me your head was \(c)/5 at the last check-in, and I believe you over the schedule", "a 3 or better at the next check-in reopens the gentle options") }
+        else if let o = i.lastOverall, o <= 4 { gate = ("you told me overall is \(o)/10, and I believe you over the schedule", "a 5 or better next time you answer reopens the gentle options") }
         else if i.meetingMinutes >= 60 { gate = ("you've had \(Int(i.meetingMinutes)) minutes of meetings today, and after that much talking and looking, eyes and ears need the break more than legs do", "a lighter meeting day, or tomorrow morning") }
-        else if i.loadPercent >= 70 { gate = ("you're at \(Int(i.focusedMinutes)) of \(Int(i.budgetMinutes)) minutes today, and anything active now is paid for tomorrow", "earlier in the day, when less of the budget is spent, is when the active breaks live") }
+        else if i.loadPercent >= 70 { gate = ("you're at \(Int(i.usedMinutes)) of \(Int(i.capMinutes)) computer minutes today, and anything active now is paid for tomorrow", "earlier in the day, with less of the day spent, is when the active breaks live") }
         else if i.lastBreakLoad != "none" { gate = ("your last break was active, and the rule is movement, then rest, then movement", "the break after this one") }
         else if i.activeBreaksToday >= 3 { gate = ("that's three active breaks already today, which is the daily cap while we learn your limits", "tomorrow") }
         else if i.hour >= 17 { gate = ("it's after 5, and evenings are for winding down, not spending", "tomorrow morning") }
@@ -184,7 +177,7 @@ enum Planner {
         // Candidates: allowed in this context, allowed at this tier, not the same as last time.
         let last = i.breaksToday.last
         var candidates = i.context.activities.compactMap { Activity.catalog[$0] }
-            .filter { Activity.tierRank[$0.minTier]! <= Activity.tierRank[tier]! && $0.load != "none" && $0.key != last }
+            .filter { Tier.rank[$0.minTier]! <= Tier.rank[tier]! && $0.load != "none" && $0.key != last }
         var trimmed: [String] = []
         if i.loadPercent >= 40 || tier != "green" {
             if candidates.contains(where: { $0.load == "cognitive" }) { trimmed.append(tier != "green" ? "the writing and planning ones wait for a green day" : "the writing and planning ones wait for a lighter day") }

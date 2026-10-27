@@ -5,10 +5,15 @@ set -e
 cd "$(dirname "$0")/.."
 [ -f scripts/local.env ] && source scripts/local.env
 BUNDLE_ID=${BUNDLE_ID:-com.supervision.mac}
+BUILD_DIR=${BUILD_DIR:-$HOME/Library/Caches/supervision-build}
+# Refuse to install a build with the wrong signature (it would silently drop macOS permissions).
+if security find-identity -p codesigning ~/Library/Keychains/supervision.keychain-db 2>/dev/null | grep -q "Supervision Dev"; then
+  codesign -dvv "$BUILD_DIR/Supervision.app" 2>&1 | grep -q "Authority=Supervision Dev" || { echo "ERROR: build is not signed with Supervision Dev; run scripts/build.sh again."; exit 1; }
+fi
 mkdir -p ~/Applications
 rm -rf ~/Applications/Supervision.app
-cp -R build/Supervision.app ~/Applications/Supervision.app
-if [ -w /usr/local/bin ]; then cp build/supervisionctl /usr/local/bin/supervisionctl; else mkdir -p ~/bin; cp build/supervisionctl ~/bin/supervisionctl; fi
+ditto --norsrc --noextattr "$BUILD_DIR/Supervision.app" ~/Applications/Supervision.app
+if [ -w /usr/local/bin ]; then cp "$BUILD_DIR/supervisionctl" /usr/local/bin/supervisionctl; else mkdir -p ~/bin; cp "$BUILD_DIR/supervisionctl" ~/bin/supervisionctl; fi
 PLIST=~/Library/LaunchAgents/$BUNDLE_ID.plist
 mkdir -p ~/Library/LaunchAgents
 cat > "$PLIST" <<EOF

@@ -1,89 +1,82 @@
 import Foundation
 
-// MARK: - Capacity: the adaptive model (PLAN-v2)
+// MARK: - Capacity: the adaptive model (docs/DESIGN.md)
 //
-// The budget is "what you could repeat tomorrow". Blocks and budgets depend on the
-// morning Whoop tier; the ramp raises them after clean days (verified at day+2) and
-// lowers them only on patterns. Everything here is an experiment with a review date.
+// Pacing over quotas (user, Sep 25): one generous daily cap on computer time, and work
+// blocks whose length follows how you're doing. The morning recovery tier sets the first
+// block; every how-are-you card nudges the next one up or down. The ramp lengthens the
+// starting blocks after clean days (verified at day+2) and shortens them only on patterns.
+// Everything here is an experiment with a review date.
 
 struct Capacity: Codable {
-    // Blocks (minutes of focused work before a short rest), by tier.
+    // Starting block (minutes of focused work before a short rest), by tier.
     var blockGreen = 30, blockYellow = 25, blockRed = 15
-    // Short rest after a block, by tier; long horizontal rest every `longRestEveryMinutes`.
+    // Live adjustment after each card: steady or better (and overall ≥ adaptUpOverall) → +step;
+    // clear/head/not-crashing down 1 → −step. Always within [blockMin, blockMax].
+    var blockStep = 5, blockMin = 15, blockMax = 45, adaptUpOverall = 7
+    // Short rest after a block, by tier; a long horizontal rest every `longRestEveryMinutes`.
     var restGreen = 5, restYellow = 7, restRed = 10
     var longRestMinutes = 15, longRestEveryMinutes = 120
-    // Weighted daily budget, by tier. Start conservative (2–3 h) and let the ramp raise it.
-    var baseGreen = 180.0, baseYellow = 150.0, baseRed = 90.0
-    // Guard rails.
-    var rolling3DayFactor = 2.5        // 3-day weighted load ≤ factor × base
-    var yesterdayHeavyPercent = 85.0   // if yesterday used more than this…
-    var afterHeavyCapPercent = 75.0    // …today is capped at this
-    // Ramp.
+    // Night (user, Sep 25): from nightStartHour the computer "blinks" — nightBlock minutes of
+    // work, nightBreak minutes of break — and from midnight it's off until morningHour.
+    var nightStartHour = 22, morningHour = 6
+    var nightBlockMinutes = 2, nightBreakMinutes = 10
+    // The one daily cap: minutes on the computer (any active screen time, meetings included).
+    var dailyCapMinutes = 480.0
+    // Ramp: starting blocks +stepUpBlockMinutes after `cleanDaysToStepUp` clean days;
+    // a step-down shortens them by `blockStep` for `stepDownDays`.
     var cleanDaysToStepUp = 3
-    var stepUpMinutes = 20.0           // 15–30 min steps
     var stepUpBlockMinutes = 5
-    var maxBase = 360.0, maxBlock = 45
-    var stepDownPercent = 15.0, stepDownDays = 14
-    // Symptom gate (1 = great … 5 = worst).
-    var gateWorsenBy = 2               // any symptom up this much vs the day's first reading → done for today
-    var gateAbsolute = 4               // or any symptom at this level
-    var softenBy = 1                   // up by this → shorter blocks, rest-only breaks
+    var stepDownDays = 14
+    // Symptom gate, on the 1–10 scale (10 = best). Only these answers count: energy and
+    // overall dip for too many ordinary reasons (user, Sep 25: "it might mean go work out").
+    var gateKeys = ["fog", "headache", "crashy"]
+    var gateDropBy = 3                 // any gate score down this much vs its first reading today…
+    var gateFloor = 3                  // …or at/below this → an hour off
+    var gateRestMinutes = 60
+    var gateStopsForDay = 2            // the second gate stop in a day ends the day
+    var softenDropBy = 2               // down this much → shorter blocks, rest-only breaks
     // Bookkeeping.
     var experimentNumber = 1
     var experimentStarted = ""         // yyyy-MM-dd
     var reviewDate = ""                // yyyy-MM-dd
-    var stepDownUntil = ""             // yyyy-MM-dd, when a step-down is in force
-    var lastCreditedDay = ""           // last day evaluated as clean/not
+    var stepDownUntil = ""             // yyyy-MM-dd, while a step-down is in force
+    var lastCreditedDay = ""           // last day judged clean/not
     var cleanStreak = 0
     var history: [String] = []         // human-readable ramp log
 
     static let file = Config.dir.appendingPathComponent("capacity.json")
     static func load() -> Capacity {
-        if let d = try? Data(contentsOf: file), let c = try? JSONDecoder().decode(Capacity.self, from: d) { return c }
+        if let c = lenientLoad(file, defaults: Capacity()) { return c }
+        // Only if the file is truly missing or corrupt: keep a copy before starting fresh.
+        if FileManager.default.fileExists(atPath: file.path) {
+            try? FileManager.default.copyItem(at: file, to: file.appendingPathExtension("bak-\(Int(Date().timeIntervalSince1970))"))
+        }
         var c = Capacity()
         c.experimentStarted = Day.string(Date()); c.reviewDate = Day.string(Date().addingTimeInterval(14 * 86400))
-        c.history.append("\(c.experimentStarted): experiment 1 starts — blocks 30/25/15, base 180/150/90")
+        c.history.append("\(c.experimentStarted): experiment 1 starts — blocks \(c.blockGreen)/\(c.blockYellow)/\(c.blockRed), cap \(Int(c.dailyCapMinutes / 60)) h")
         c.save(); return c
     }
-    func save() { let e = JSONEncoder(); e.outputFormatting = [.prettyPrinted, .sortedKeys]; try? e.encode(self).write(to: Capacity.file) }
+    func save() { saveJSON(self, to: Capacity.file) }
 
-    func block(for tier: String) -> Int { tier == "green" ? blockGreen : tier == "red" ? blockRed : blockYellow }
-    func rest(for tier: String) -> Int { tier == "green" ? restGreen : tier == "red" ? restRed : restYellow }
-    func base(for tier: String) -> Double {
-        let b = tier == "green" ? baseGreen : tier == "red" ? baseRed : baseYellow
-        if !stepDownUntil.isEmpty, stepDownUntil >= Day.string(Date()) { return b * (1 - stepDownPercent / 100) }
-        return b
+    /// Today's first block for a tier (a step shorter while a step-down is in force).
+    func block(for tier: String) -> Int {
+        let b = tier == "green" ? blockGreen : tier == "red" ? blockRed : blockYellow
+        return max(blockMin, stepDownActive ? b - blockStep : b)
     }
+    func rest(for tier: String) -> Int { tier == "green" ? restGreen : tier == "red" ? restRed : restYellow }
+    var stepDownActive: Bool { !stepDownUntil.isEmpty && stepDownUntil >= Day.string(Date()) }
     var experimentLabel: String { "Experiment \(experimentNumber) · review \(Day.pretty(reviewDate))" }
-}
-
-enum Day {
-    static func string(_ d: Date) -> String { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: d) }
-    static func date(_ s: String) -> Date? { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.date(from: s) }
-    static func pretty(_ s: String) -> String { guard let d = date(s) else { return s }; let f = DateFormatter(); f.dateFormat = "MMM d"; return f.string(from: d) }
-    static func start(_ s: String) -> Date { date(s) ?? Date() }
 }
 
 // MARK: - Weighted load
 
-/// Kinds of work cost different amounts. These are first guesses, reviewed every fortnight.
-enum Weights {
-    static let byCategory: [String: Double] = [
-        "admin": 0.8, "comms": 0.8, "reading": 1.0, "writing": 1.0, "analysis": 1.0, "building": 1.0,
-        "video": 1.2, "meeting": 1.3, "other": 1.0, "leisure": 0.0,
-    ]
-    static let intenseMeeting = 1.6
-    static let contextSwitchPenalty = 0.10    // per hour with > threshold app switches
-    static let contextSwitchThreshold = 20
-    static let offscreenWork = 0.5            // paper / voice work the user reports
-}
-
 struct DayLoad {
-    var weighted = 0.0            // the number the budget is measured in
+    var screen = 0.0              // all active computer minutes, meetings included: what the cap counts
+    var weighted = 0.0            // weighted by kind of work: logged to learn which work costs most
     var focused = 0.0             // raw focused screen minutes (non-meeting, non-leisure)
-    var meeting = 0.0             // screen meeting minutes (max with calendar)
+    var meeting = 0.0             // meeting minutes (screen-detected or calendar, whichever is larger)
     var offscreen = 0.0           // reported paper/voice minutes (raw)
-    var switchHours = 0           // hours with heavy context switching
     var byCategory: [String: Double] = [:]
 }
 
@@ -101,11 +94,12 @@ extension Store {
             l.weighted += m * (Weights.byCategory[cat] ?? 1.0)
         }
         l.meeting = max((secs["meeting"] ?? 0) / 60, calendarMeetingMinutes)
+        l.screen = secs.values.reduce(0, +) / 60 - (secs["meeting"] ?? 0) / 60 + l.meeting
         let intense = countEvents(kind: "flag_intense", since: start, until: end) > 0
         l.weighted += l.meeting * (intense ? Weights.intenseMeeting : Weights.byCategory["meeting"]!)
-        // Context switching: hours with many app changes.
-        l.switchHours = heavySwitchHours(from: start, to: end)
-        l.weighted *= 1 + Double(l.switchHours) * Weights.contextSwitchPenalty / max(1, Double(max(1, Int(l.focused / 60))))
+        // Context switching: each heavy-switching hour adds a share of the day's screen load.
+        let hoursWorked = max(1.0, (l.focused + l.meeting) / 60)
+        l.weighted *= 1 + Double(heavySwitchHours(from: start, to: end)) / hoursWorked * Weights.contextSwitchPenalty
         // Off-screen work the user told us about: "minutes|what".
         for d in eventDetails(kind: "offscreen_work", since: start, until: end) {
             if let m = Double(d.split(separator: "|").first ?? "") { l.offscreen += m; l.weighted += m * Weights.offscreenWork }
@@ -113,14 +107,9 @@ extension Store {
         return l
     }
 
-    func heavySwitchHours(from: Date, to: Date) -> Int {
-        var hours = 0
-        var t = from
-        while t < to {
-            let next = t.addingTimeInterval(3600)
-            if appSwitches(from: t, to: next) > Weights.contextSwitchThreshold { hours += 1 }
-            t = next
-        }
-        return hours
+    private func heavySwitchHours(from: Date, to: Date) -> Int {
+        stride(from: from.timeIntervalSince1970, to: to.timeIntervalSince1970, by: 3600).filter {
+            appSwitches(from: Date(timeIntervalSince1970: $0), to: Date(timeIntervalSince1970: $0 + 3600)) > Weights.contextSwitchThreshold
+        }.count
     }
 }
