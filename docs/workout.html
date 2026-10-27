@@ -82,7 +82,11 @@ let facing = "user";   // front camera, so you can see yourself (Oct 26)
 let settleUntil = 0;   // between steps: 6 s to get into position before counting (Oct 27: rolling over counted as reps)
 let follow = null;     // the Mac's workout screen, when one is up (Oct 27: "always update to whatever is on my screen")
 
-function counter(kind) { return kind === "bridges" ? { enter: 158, exit: 140 } : kind === "legs" ? { enter: 25, exit: 10 } : { enter: 30, exit: 12 }; }
+function counter(kind) {
+  return kind === "bridges" ? { enter: 158, exit: 140 } : kind === "legs" ? { enter: 25, exit: 10 }
+    : kind === "deadbug" ? { enter: 150, exit: 110 } : kind === "kick" ? { enter: 150, exit: 115 } : { enter: 30, exit: 12 };
+}
+const timed = k => k === "pause" || k === "hold";
 function angle(a, b, c) {
   const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]];
   const n = Math.hypot(...v1) * Math.hypot(...v2); if (!n) return 0;
@@ -102,8 +106,8 @@ function render() {
   const s = steps[i];
   $("tag").textContent = `Step ${i + 1} of ${steps.length}`;
   $("title").textContent = s.title;
-  $("count").textContent = s.kind === "pause" ? Math.max(0, s.target - reps) : `${Math.min(reps, s.target)} / ${s.target}`;
-  $("dots").innerHTML = s.kind === "pause" ? "" : Array.from({ length: s.target }, (_, k) => `<i class="${k < reps ? "on" : ""}"></i>`).join("");
+  $("count").textContent = timed(s.kind) ? Math.max(0, s.target - reps) : `${Math.min(reps, s.target)} / ${s.target}`;
+  $("dots").innerHTML = timed(s.kind) ? "" : Array.from({ length: s.target }, (_, k) => `<i class="${k < reps ? "on" : ""}"></i>`).join("");
 }
 // The relay sometimes turns a message away (Oct 27: the 10th clamshell never arrived, and the Mac waited).
 // Retry up to 5 times, 2 s apart.
@@ -124,7 +128,7 @@ async function send(ok) {
 }
 function next() {
   const s = steps[i];
-  if (s.kind !== "pause") done.push(`${s.title.split(" ·")[0].toLowerCase()} ${s.target}`);
+  if (s.kind !== "pause") done.push(`${s.title.split(" ·")[0].toLowerCase()} ${s.target}${s.kind === "hold" ? " s" : ""}`);
   i++; reps = 0; armed = false; stepStart = performance.now(); settleUntil = stepStart + 6000;
   if (i >= steps.length) { running = false; $("title").textContent = "✓ Nice work"; $("count").textContent = "✓"; $("stop").hidden = true; wake?.release?.(); send(true); return; }
   $("coach").textContent = steps[i].kind === steps[i - 1].kind ? "Switch sides" : steps[i].hint;
@@ -133,6 +137,12 @@ function next() {
 function loop() {
   if (!running) return;
   const s = steps[i], now = performance.now();
+  if (s.kind === "hold") {   // a timed stretch: the clock starts after the get-into-position seconds
+    const t = (now - Math.max(stepStart, settleUntil)) / 1000;
+    reps = Math.max(0, Math.floor(t));
+    $("coach").textContent = now < settleUntil ? `Get into position · ${Math.ceil((settleUntil - now) / 1000)}` : s.hint;
+    render(); if (reps >= s.target) next(); requestAnimationFrame(loop); return;
+  }
   if (s.kind === "pause") {
     reps = Math.floor((now - stepStart) / 1000);
     $("coach").textContent = `Sitting. ${Math.max(0, s.target - reps)} s, then stand slowly`;
@@ -150,7 +160,14 @@ function loop() {
   if (lm) {
     ctx.fillStyle = "rgba(255,255,255,.9)";
     for (const k of [11, 12, 23, 24, 25, 26, 27, 28]) { const p = P(k); if (p) { ctx.beginPath(); ctx.arc(p[0], p[1], 6, 0, 7); ctx.fill(); } }
-    if (s.kind === "bridges") {
+    if (s.kind === "deadbug" || s.kind === "kick") {
+      // Either leg: the larger angle (dead bug: hip–knee–ankle; kickback: shoulder–hip–knee).
+      const sets = s.kind === "deadbug" ? [[23, 25, 27], [24, 26, 28]] : [[11, 23, 25], [12, 24, 26]];
+      const as = sets.map(t => t.map(P)).filter(t => t.every(Boolean)).map(t => angle(...t));
+      if (as.length) { const a = Math.max(...as); if (feed(a, s.kind) && reps >= s.target) { next(); requestAnimationFrame(loop); return; }
+        coach = s.kind === "deadbug" ? (a > 145 ? "Reach long… and bring it back in" : "Slowly straighten one leg out") : (a > 145 ? "Squeeze… and lower slowly" : "Push one heel back and up, slowly"); }
+      else coach = s.kind === "deadbug" ? "Back up so I can see your hips, knees and ankles" : "Back up so I can see your shoulder, hip and knee";
+    } else if (s.kind === "bridges") {
       const side = [[11, 23, 25], [12, 24, 26]].map(t => t.map(P)).find(t => t.every(Boolean));
       if (side) { const a = angle(...side); if (feed(a, "bridges") && reps >= s.target) { next(); requestAnimationFrame(loop); return; } coach = a > 155 ? "Hold at the top… then lower slowly" : "Lift your hips, slowly"; }
       else coach = "Back up so I can see your shoulder, hip and knee";
@@ -214,7 +231,7 @@ function applyState(st) {
   follow = st;
   if (!same) { steps = st.steps.map(x => ({ ...x, kind: kindOf(x.kind) })); done = []; i = -1; }
   if (st.i !== i) { const first = i < 0; i = Math.min(st.i, steps.length - 1); reps = 0; armed = false; stepStart = performance.now(); settleUntil = first ? 0 : stepStart + 6000; if (running) $("coach").textContent = steps[i].hint; }
-  if ((st.reps || 0) > reps && steps[i].kind !== "pause") reps = st.reps;
+  if ((st.reps || 0) > reps && !timed(steps[i].kind)) reps = st.reps;
   $("set").hidden = true; $("note").hidden = running; $("note").textContent = "Following your Mac's workout. Tap Start, prop the phone where it can see you.";
   render();
 }

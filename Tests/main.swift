@@ -147,6 +147,13 @@ var shallow = BlinkRule.Detector()
 for r in [0.3, 0.3, 0.3, 0.21, 0.29, 0.3, 0.22, 0.3] { shallow.feed(r) }
 check(shallow.blinks == 2, "a 30% dip counts: Vision's eye outline never fully closes (got \(shallow.blinks))")
 
+var bug = Rep.Counter.legExtend()
+for a in [95.0, 100, 160, 165, 120, 100, 155, 105] { bug.feed(a) }
+check(bug.reps == 2, "dead bugs: two leg extensions (got \(bug.reps))")
+var kick = Rep.Counter.kickback()
+for a in [90.0, 130, 145, 120, 90] { kick.feed(a) }
+check(kick.reps == 0, "kickbacks: a half lift isn't a rep")
+
 // MARK: Switching
 section("task switching")
 func sw(_ n: Int, since: Double = 9999, paused: Bool = false, call: Bool = false, late: Bool = false) -> Bool {

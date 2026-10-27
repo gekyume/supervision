@@ -80,8 +80,10 @@ If a `CLAUDE.local.md` exists, it describes the specific person using this insta
   red days), camera-checked with live coaching ("back up a bit", "come closer"), a heads-up 20 s before; done when
   seen, lets go after 90 s, skip by typing a statement; not near a regular break, an eye break, a call or at night.
 - Exercise snacks: up to 3 regular breaks a day (10 am–5 pm, never two in a row, not on red days) hold one small counted
-  exercise, rotating by place: lying (bridges; clamshells both sides; each then a timed sit-and-pause, POTS) or standing
-  (kickbacks; side raises), with the iPhone as a Continuity Camera when it's near (else the Mac's
+  exercise, rotating by place and across days: lying (bridges + knee-to-chest; clamshells; dead bugs + knee rocks;
+  kneeling kickbacks + child's pose; ankle pumps + bridges + figure-4; each then a timed sit-and-pause, POTS) or standing
+  (kickbacks; side raises; calf raises + chest opener). Counted moves use the camera, stretches are timed, 6 s to get into
+  position between steps, with the iPhone as a Continuity Camera when it's near (else the Mac's
   camera). The break can't end until it's done (−2 min) or 5 min past; stop by typed statement. `supervisionctl workout` tries it.
 - Places: Wi-Fi tells the app where you are; a new network brings one "Where are you?" card (remembered). Each place
   sets its workout (`workout` in contexts.json: lying / standing / none). Workouts can also be done on the phone page

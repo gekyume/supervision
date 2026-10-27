@@ -711,7 +711,7 @@ final class Engine {
     @discardableResult private func startWorkout(inBreak: Bool, tryReps: Int = 0, snackIndex: Int? = nil) -> Bool {
         // The set follows the place (Oct 26): lying-down at home and at the parents', standing at the office.
         let standing = contexts.active.workout == "standing"
-        let steps = snackIndex.map { WorkoutSession.snack(place: contexts.active.workout ?? "lying", index: $0, reps: standing ? config.workoutStandingReps : config.workoutBridges, clamReps: config.workoutClamshells) } ?? (standing ? WorkoutSession.standing(reps: tryReps > 0 ? tryReps : config.workoutStandingReps)
+        let steps = snackIndex.map { WorkoutSession.snack(place: contexts.active.workout ?? "lying", index: $0 + (Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0) * config.workoutSnacksPerDay, reps: standing ? config.workoutStandingReps : config.workoutBridges, clamReps: config.workoutClamshells) } ?? (standing ? WorkoutSession.standing(reps: tryReps > 0 ? tryReps : config.workoutStandingReps)
             : tryReps > 0 ? WorkoutSession.steps(bridges: tryReps, clamshells: tryReps, pauseSeconds: 10)
                           : WorkoutSession.steps(bridges: config.workoutBridges, clamshells: config.workoutClamshells))
         let ok = WorkoutSession.shared.show(steps: steps, statement: config.workoutStopStatement, promise: config.workoutPromiseOn) { [weak self] finished, summary in

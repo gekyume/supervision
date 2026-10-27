@@ -292,6 +292,10 @@ enum Rep {
         static func legSpread() -> Counter { Counter(enter: 25, exit: 10, rising: true) }
         /// Glute bridge: the shoulder–hip–knee line straightens past 158° (hips up), back below 140° (down).
         static func bridge() -> Counter { Counter(enter: 158, exit: 140, rising: true) }
+        /// Dead bugs / heel slides (on your back): a knee straightens past 150° (leg out), bends back below 110°.
+        static func legExtend() -> Counter { Counter(enter: 150, exit: 110, rising: true) }
+        /// Glute kickbacks on hands and knees: the shoulder–hip–knee line opens past 150° (leg back), returns below 115°.
+        static func kickback() -> Counter { Counter(enter: 150, exit: 115, rising: true) }
     }
 }
 

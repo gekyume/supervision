@@ -57,7 +57,8 @@ final class WorkoutCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         return ok && usingPhone
     }
     /// Start counting a new exercise from zero.
-    func begin(_ k: String) { queue.async { self.kind = k; self.counter = k == "pushups" ? .pushUp() : k == "bridges" ? .bridge() : k == "legs" ? .legSpread() : .clamshell() } }
+    func begin(_ k: String) { queue.async { self.kind = k; self.counter = k == "pushups" ? .pushUp() : k == "bridges" ? .bridge() : k == "legs" ? .legSpread()
+        : k == "deadbug" ? .legExtend() : k == "kick" ? .kickback() : .clamshell() } }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput buffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard -last.timeIntervalSinceNow > 0.08, let px = CMSampleBufferGetImageBuffer(buffer) else { return }
@@ -65,7 +66,8 @@ final class WorkoutCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         let aspect = Double(CVPixelBufferGetWidth(px)) / Double(max(1, CVPixelBufferGetHeight(px)))
         let req = VNDetectHumanBodyPoseRequest()
         try? VNImageRequestHandler(cvPixelBuffer: px, options: [:]).perform([req])
-        var coach = kind == "pushups" ? "Turn side-on to the camera so it can see your arm" : kind == "bridges" ? "Lie on your back, side-on to the camera" : "Lie on your side facing the camera, knees bent"
+        var coach = kind == "pushups" ? "Turn side-on to the camera so it can see your arm" : kind == "bridges" || kind == "deadbug" ? "Lie on your back, side-on to the camera"
+            : kind == "kick" ? "Hands and knees, side-on to the camera" : "Lie on your side facing the camera, knees bent"
         if let body = req.results?.first, let pts = try? body.recognizedPoints(.all) {
             // Aspect-corrected points, so angles are true angles.
             let p: (VNHumanBodyPoseObservation.JointName) -> (Double, Double)? = { j in
@@ -80,6 +82,17 @@ final class WorkoutCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                     counter.feed(angle)
                     coach = angle > 155 ? "Hold at the top… then lower slowly" : "Lift your hips, slowly"
                 } else { coach = "Back up so I can see your shoulder, hip and knee" }
+            } else if kind == "deadbug" || kind == "kick" {
+                // Either leg counts: the larger of the two angles (dead bug: hip–knee–ankle; kickback: shoulder–hip–knee).
+                let sides: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] = kind == "deadbug"
+                    ? [(.leftHip, .leftKnee, .leftAnkle), (.rightHip, .rightKnee, .rightAnkle)]
+                    : [(.leftShoulder, .leftHip, .leftKnee), (.rightShoulder, .rightHip, .rightKnee)]
+                let angles = sides.compactMap { (a, b, c) -> Double? in guard let x = p(a), let y = p(b), let z = p(c) else { return nil }; return Rep.angle(x, y, z) }
+                if let angle = angles.max() {
+                    counter.feed(angle)
+                    coach = kind == "deadbug" ? (angle > 145 ? "Reach long… and bring it back in" : "Slowly straighten one leg out, opposite arm back")
+                                              : (angle > 145 ? "Squeeze… and lower slowly" : "Push one heel back and up, slowly")
+                } else { coach = kind == "deadbug" ? "Back up so I can see your hips, knees and ankles" : "Back up so I can see your shoulder, hip and knee" }
             } else if kind == "pushups" {
                 let sides: [(VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName, VNHumanBodyPoseObservation.JointName)] =
                     [(.leftShoulder, .leftElbow, .leftWrist), (.rightShoulder, .rightElbow, .rightWrist)]
@@ -140,13 +153,30 @@ final class WorkoutSession {
     /// ME/CFS- and POTS-friendly (user, Oct 26): everything lying down, slow, no position changes mid-set,
     /// and a timed sit-and-pause before standing so blood pressure can catch up.
     /// One exercise snack: lying-down ones end with the sit-and-pause (POTS); standing ones are one movement, both legs.
+    /// Oct 27 ("mix up the exercises … stretches, glute kickbacks, dead bugs"): a rotating menu, all lying,
+    /// kneeling or desk-supported, slow, nothing that raises the head quickly. `index` keeps rotating across days.
+    /// Counted moves use the camera; holds (stretches, ankle pumps) are timed.
     static func snack(place: String, index: Int, reps: Int, clamReps: Int, pauseSeconds: Int = 30) -> [WorkoutStep] {
         let pause = WorkoutStep(title: "Sit up, then pause", kind: "pause", target: pauseSeconds, hint: "Sit before you stand. Let your heart rate settle.")
+        let hold: (String, Int, String) -> WorkoutStep = { WorkoutStep(title: $0, kind: "hold", target: $1, hint: $2) }
         if place == "standing" {
-            return WorkoutRule.pick([Array(standing(reps: reps).prefix(2)), Array(standing(reps: reps).suffix(2))], snacksToday: index)
+            let st = standing(reps: reps)
+            return WorkoutRule.pick([Array(st.prefix(2)), Array(st.suffix(2)),
+                                     [hold("Calf raises", 30, "Hands on the desk. Up on your toes, down slowly: it pumps blood back up (POTS)."),
+                                      hold("Chest opener", 20, "Hands clasped behind you, shoulders back, breathe.")]], snacksToday: index)
         }
         let all = steps(bridges: reps, clamshells: clamReps, pauseSeconds: pauseSeconds)
-        return WorkoutRule.pick([[all[0], pause], [all[1], all[2], pause]], snacksToday: index)
+        let menu: [[WorkoutStep]] = [
+            [all[0], hold("Knee to chest · first leg", 20, "On your back, hug one knee in. Breathe."), hold("Knee to chest · other leg", 20, "Same, other knee."), pause],
+            [all[1], all[2], pause],
+            [WorkoutStep(title: "Dead bugs", kind: "deadbug", target: reps, hint: "On your back, knees up at 90°. Slowly straighten one leg, then the other."),
+             hold("Knees side to side", 30, "Knees bent, let them fall gently one way, then the other."), pause],
+            [WorkoutStep(title: "Glute kickbacks · first leg", kind: "kick", target: reps, hint: "Hands and knees, side-on to the camera. Push one heel back and up."),
+             WorkoutStep(title: "Glute kickbacks · other leg", kind: "kick", target: reps, hint: "Same, other leg."), hold("Child's pose", 30, "Sit back onto your heels, arms long, forehead down."), pause],
+            [hold("Ankle pumps", 30, "On your back, legs up on a pillow. Point and flex your feet (POTS: it helps the blood come back)."), all[0],
+             hold("Figure-4 stretch", 30, "On your back, ankle over the other knee, pull gently. Switch halfway."), pause],
+        ]
+        return WorkoutRule.pick(menu, snacksToday: index)
     }
 
     /// Standing set for places without room to lie down (the office): hand on the desk, slow.
@@ -200,24 +230,30 @@ final class WorkoutSession {
             guard let self = self, self.window != nil else { t.invalidate(); return }
             let s = steps[i]
             if s.kind == "pause" { reps = Int(-stepStarted.timeIntervalSinceNow); coach = "Sitting. \(max(0, s.target - reps)) s, then stand slowly" }
+            else if s.kind == "hold" {
+                // A timed hold: `settle` to get into it, then the clock.
+                let t = -stepStarted.timeIntervalSinceNow - (i == 0 ? 0 : settle)
+                reps = max(0, Int(t)); coach = t < 0 ? "Get into position · \(Int(ceil(-t)))" : s.hint
+            }
             else if !counting {
                 let left = Int(ceil(settle + stepAt.timeIntervalSinceNow))
                 if left <= 0 { counting = true; reps = 0; self.counter.begin(s.kind) } else { coach = "Get into position · counting starts in \(left)" }
             }
-            if s.kind != "pause", let p = self.phoneReps {
+            if s.kind != "pause", s.kind != "hold", let p = self.phoneReps {
                 if p.step > i { reps = s.target }   // the phone is already past this one
                 else if p.step == i, p.reps > reps { reps = p.reps; coach = "📱 Counted on your phone" }
             }
-            self.publish(steps, i, s.kind == "pause" ? 0 : reps)
+            let timed = s.kind == "pause" || s.kind == "hold"
+            self.publish(steps, i, timed ? 0 : reps)
             self.tag.stringValue = "WORKOUT · STEP \(i + 1) OF \(steps.count)"
             self.phoneStatus.stringValue = self.counter.usingPhone ? "📱 iPhone camera: connected ✓"
                 : (CameraPick.phoneAvailable ? "📱 iPhone found: tap Use iPhone camera" : "📱 iPhone camera: not found · using the Mac's camera")
             self.title.stringValue = s.title
-            let shown = s.kind == "pause" ? "\(max(0, s.target - reps))" : "\(min(reps, s.target)) / \(s.target)"
+            let shown = timed ? "\(max(0, s.target - reps))" : "\(min(reps, s.target)) / \(s.target)"
             if self.count.stringValue != shown { if !self.count.stringValue.isEmpty { Brand.flash(self.count) }; self.count.stringValue = shown }
             self.coachLine.stringValue = coach.isEmpty ? s.hint : coach
             if reps >= s.target {
-                if s.kind != "pause" { log.append("\(s.title.components(separatedBy: " ·").first ?? s.title) \(s.target)") }
+                if s.kind != "pause" { log.append("\(s.title.components(separatedBy: " ·").first ?? s.title) \(s.target)\(s.kind == "hold" ? " s" : "")") }
                 i += 1; reps = 0; coach = ""; stepStarted = Date(); stepAt = Date(); counting = false
                 if let p = self.phoneReps, p.step < i { self.phoneReps = nil }
                 if i >= steps.count {
@@ -225,7 +261,7 @@ final class WorkoutSession {
                     self.title.stringValue = "✓ Done"; self.coachLine.stringValue = "Nice work. Back to your break."
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { finish(true) }
                 } else {
-                    if steps[i].kind == "pause" { counting = true }
+                    if steps[i].kind == "pause" || steps[i].kind == "hold" { counting = true }
                     self.coachLine.stringValue = steps[i].kind == steps[i - 1].kind ? "Switch sides" : "Next: \(steps[i].title)"
                 }
             }
