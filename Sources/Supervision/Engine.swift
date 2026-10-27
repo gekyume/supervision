@@ -696,7 +696,11 @@ final class Engine {
     /// A workout counted on the phone page (Oct 26: the iPhone as a Mac camera didn't connect). Same
     /// effect as the Mac's own count: logged, and on a workout break it completes it (-2 min).
     func phoneWorkout(done: Bool, summary: String) {
-        Store.shared.event("workout", (done ? "done: " : "stopped: ") + summary + " (counted on the phone)")
+        // The Mac may have finished the same workout a moment ago (the phone follows it): log it once.
+        let justLogged = (Store.shared.lastEvent(kind: "workout", since: Date().addingTimeInterval(-60))?.0) != nil
+        if !justLogged || WorkoutSession.shared.isShowing { Store.shared.event("workout", (done ? "done: " : "stopped: ") + summary + " (counted on the phone)") }
+        // The phone finishing closes the Mac's workout screen too (Oct 27: a lost rep left it waiting at 9/10).
+        if done, !workoutPending, WorkoutSession.shared.isShowing { WorkoutSession.shared.dismiss() }
         guard workoutPending else { return }
         workoutPending = false; WorkoutSession.shared.dismiss(); LockScreen.shared.setMove(nil)
         if done, let u = breakUntil { breakUntil = max(Date(), u.addingTimeInterval(-120)); saveBreakState() }

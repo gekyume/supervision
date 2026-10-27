@@ -115,7 +115,7 @@ final class WorkoutSession {
     private var handlers: [Card.Handler] = []
     private var deviceObserver: NSObjectProtocol?
     private var phoneReps: (step: Int, reps: Int)?
-    private var lastPublished = ""
+    private var lastPublished = "", lastReps = 0, lastPublishAt = Date.distantPast
     var isShowing: Bool { window != nil }
 
     /// A rep counted by the phone page while it follows this screen (Oct 27).
@@ -130,9 +130,10 @@ final class WorkoutSession {
         var obj: [String: Any] = ["active": steps != nil, "i": i, "reps": reps, "at": Date().timeIntervalSince1970]
         if let steps { obj["steps"] = steps.map { ["title": $0.title, "kind": $0.kind, "target": $0.target, "hint": $0.hint] } }
         guard let d = try? JSONSerialization.data(withJSONObject: obj), let json = String(data: d, encoding: .utf8) else { return }
-        let key = "\(steps != nil)|\(i)|\(reps)"
-        guard key != lastPublished else { return }
-        lastPublished = key
+        // Step changes go out at once; rep counts at most every 4 s (each message counts toward ntfy's limit).
+        let key = "\(steps != nil)|\(i)"
+        guard key != lastPublished || (reps != lastReps && -lastPublishAt.timeIntervalSinceNow >= 4) else { return }
+        lastPublished = key; lastReps = reps; lastPublishAt = Date()
         PhoneRelay.shared.publishState(json)
     }
 

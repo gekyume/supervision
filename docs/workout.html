@@ -93,7 +93,7 @@ function feed(val, kind) {               // both kinds start by rising past `ent
   if (!armed) { if (val > t.enter) armed = true; return false; }
   if (val < t.exit) {
     armed = false; reps++; navigator.vibrate?.(30);
-    if (follow && topic) fetch(`https://ntfy.sh/${topic}`, { method: "POST", body: `rep|${i}|${reps}` }).catch(() => {});
+    if (follow && topic) post(`rep|${i}|${reps}`);
     return true;
   }
   return false;
@@ -105,19 +105,27 @@ function render() {
   $("count").textContent = s.kind === "pause" ? Math.max(0, s.target - reps) : `${Math.min(reps, s.target)} / ${s.target}`;
   $("dots").innerHTML = s.kind === "pause" ? "" : Array.from({ length: s.target }, (_, k) => `<i class="${k < reps ? "on" : ""}"></i>`).join("");
 }
+// The relay sometimes turns a message away (Oct 27: the 10th clamshell never arrived, and the Mac waited).
+// Retry up to 5 times, 2 s apart.
+async function post(body) {
+  for (let k = 0; k < 5; k++) {
+    try { const r = await fetch(`https://ntfy.sh/${topic}`, { method: "POST", body }); if (r.ok) return true; } catch {}
+    await new Promise(res => setTimeout(res, 2000));
+  }
+  return false;
+}
 async function send(ok) {
   const summary = done.join(", ") + (ok ? "" : ` (stopped at ${steps[i].title} ${reps}/${steps[i].target})`);
   if (!topic) { $("coach").textContent = "Done, but this phone doesn't know your Mac's address yet. Open your saved Supervision link once."; return; }
-  try {
-    await fetch(`https://ntfy.sh/${topic}`, { method: "POST", body: `workout|${ok ? "done" : "stopped"}|${summary}` });
-    $("coach").textContent = ok ? "✓ Done. Sent to your Mac." : "Stopped. Sent to your Mac.";
-  } catch { $("coach").textContent = "Couldn't reach your Mac. Check the connection and tap Start to redo the last step."; }
+  $("coach").textContent = "Sending to your Mac…";
+  $("coach").textContent = await post(`workout|${ok ? "done" : "stopped"}|${summary}`)
+    ? (ok ? "✓ Done. Sent to your Mac." : "Stopped. Sent to your Mac.")
+    : "Couldn't reach your Mac. Check the connection, then tap 🤞 to send it.";
 }
 function next() {
   const s = steps[i];
   if (s.kind !== "pause") done.push(`${s.title.split(" ·")[0].toLowerCase()} ${s.target}`);
   i++; reps = 0; armed = false; stepStart = performance.now(); settleUntil = stepStart + 6000;
-  if (i >= steps.length && follow) { running = false; $("title").textContent = "✓ Nice work"; $("count").textContent = "✓"; $("stop").hidden = true; wake?.release?.(); $("coach").textContent = "Your Mac has the count."; return; }
   if (i >= steps.length) { running = false; $("title").textContent = "✓ Nice work"; $("count").textContent = "✓"; $("stop").hidden = true; wake?.release?.(); send(true); return; }
   $("coach").textContent = steps[i].kind === steps[i - 1].kind ? "Switch sides" : steps[i].hint;
   render();
