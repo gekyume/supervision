@@ -29,6 +29,14 @@
   button.primary { background:var(--ink); color:var(--paper); border-color:var(--ink); }
   .row { display:flex; gap:8px; flex-wrap:wrap; }
   .note { font-size:13px; color:var(--muted); }
+  /* Landscape (phone on its side): camera on the left at full height, words on the right. */
+  @media (orientation: landscape) and (max-height: 600px) {
+    body { display:grid; grid-template-columns: 1.5fr 1fr; grid-template-rows: auto auto 1fr auto auto auto;
+           column-gap:16px; row-gap:6px; padding:max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left)); }
+    .stage { grid-column:1; grid-row:1 / -1; }
+    .tag, h1, .note, .coach, .dots, .row { grid-column:2; }
+    h1 { font-size:22px; } .coach { font-size:17px; } .count { font-size:56px; }
+  }
 </style>
 </head>
 <body>
