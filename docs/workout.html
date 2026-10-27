@@ -46,7 +46,7 @@
   <div class="stage mirror" id="stage"><video id="v" playsinline muted></video><canvas id="c"></canvas><div class="count" id="count"></div></div>
   <div class="coach" id="coach"></div>
   <div class="dots" id="dots"></div>
-  <div class="row"><button class="primary" id="go">Start</button><button id="flip">Flip camera</button><button id="stop" hidden>Stop</button></div>
+  <div class="row"><button class="primary" id="go">Start</button><button id="set">Standing set</button><button id="flip">Flip camera</button><button id="promise">🤞 I promise I did it</button><button id="stop" hidden>Stop</button></div>
 <script type="module">
 /* Supervision workout page (Oct 26 2026). The same rules as the Mac app (Sources/Shared/Rules.swift):
    a rep = the measure crosses `enter`, then comes back past `exit`. Bridges: shoulder–hip–knee angle
@@ -60,18 +60,27 @@ let topic = location.hash.slice(1) || q.get("t") || "";
 try { if (topic) localStorage.setItem("svTopic", topic); else topic = localStorage.getItem("svTopic") || ""; } catch {}
 if (q.get("t")) { q.delete("t"); history.replaceState(null, "", location.pathname + "?" + q.toString()); }
 const N = { b: +(q.get("b") || 8), c: +(q.get("c") || 10), p: +(q.get("p") || 30) };
-const steps = [
+const lying = [
   { title: "Glute bridges", kind: "bridges", target: N.b, hint: "On your back, knees bent. Lift slowly, lower slowly." },
   { title: "Clamshells · first side", kind: "clam", target: N.c, hint: "On your side, knees bent, feet together." },
   { title: "Clamshells · other side", kind: "clam", target: N.c, hint: "Roll over slowly, same again." },
   { title: "Sit up, then pause", kind: "pause", target: N.p, hint: "Sit before you stand. Let your heart rate settle." },
 ];
+// Standing set for places without room to lie down (the office): hand on the desk, slow.
+const S = +(q.get("s") || 8);
+const standing = [
+  { title: "Leg kickbacks · first leg", kind: "legs", target: S, hint: "Hand on the desk, side-on to the camera. Slow kick back." },
+  { title: "Leg kickbacks · other leg", kind: "legs", target: S, hint: "Same, other leg." },
+  { title: "Side leg raises · first leg", kind: "legs", target: S, hint: "Face the camera, hand on the desk, lift out to the side." },
+  { title: "Side leg raises · other leg", kind: "legs", target: S, hint: "Same, other leg." },
+];
+let steps = q.get("set") === "standing" ? standing : lying;
 const $ = id => document.getElementById(id);
 const v = $("v"), cv = $("c"), ctx = cv.getContext("2d");
 let pose, i = 0, reps = 0, armed = false, stepStart = 0, running = false, done = [], wake;
 let facing = "user";   // front camera, so you can see yourself (Oct 26)
 
-function counter(kind) { return kind === "bridges" ? { enter: 158, exit: 140 } : { enter: 30, exit: 12 }; }
+function counter(kind) { return kind === "bridges" ? { enter: 158, exit: 140 } : kind === "legs" ? { enter: 25, exit: 10 } : { enter: 30, exit: 12 }; }
 function angle(a, b, c) {
   const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]];
   const n = Math.hypot(...v1) * Math.hypot(...v2); if (!n) return 0;
@@ -130,8 +139,8 @@ function loop() {
       const lk = P(25), rk = P(26), lh = P(23), rh = P(24);
       if (lk && rk && (lh || rh)) {
         const hip = lh && rh ? [(lh[0] + rh[0]) / 2, (lh[1] + rh[1]) / 2] : (lh || rh);
-        const a = angle(lk, hip, rk); if (feed(a, "clam") && reps >= s.target) { next(); requestAnimationFrame(loop); return; }
-        coach = a > 25 ? "Open… and close slowly" : "Feet together, lift the top knee";
+        const a = angle(lk, hip, rk); if (feed(a, s.kind === "legs" ? "legs" : "clam") && reps >= s.target) { next(); requestAnimationFrame(loop); return; }
+        coach = s.kind === "legs" ? (a > 20 ? "Hold… and bring it back slowly" : "Lift the leg, slowly") : (a > 25 ? "Open… and close slowly" : "Feet together, lift the top knee");
       } else coach = "Back up so I can see your hips and both knees";
     }
   } else coach = "Lie down where the camera can see all of you";
@@ -156,6 +165,18 @@ async function openCamera() {
   await v.play();
 }
 $("flip").onclick = async () => { facing = facing === "user" ? "environment" : "user"; if (v.srcObject) await openCamera().catch(() => {}); };
+$("set").onclick = () => {
+  if (running) return;
+  steps = steps === lying ? standing : lying; i = 0; reps = 0;
+  $("set").textContent = steps === lying ? "Standing set" : "Lying-down set"; render();
+};
+if (steps === standing) $("set").textContent = "Lying-down set";
+// Honour system for what the camera can't see: logged as "promised" on the Mac, reviewed weekly.
+$("promise").onclick = () => {
+  running = false; wake?.release?.();
+  done = ["promised: " + steps.filter(s => s.kind !== "pause").map(s => `${s.title.split(" ·")[0].toLowerCase()} ${s.target}`).join(", ")];
+  i = steps.length - 1; $("title").textContent = "✓ Counted on your word"; $("stop").hidden = true; send(true);
+};
 $("stop").onclick = () => { running = false; $("stop").hidden = true; wake?.release?.(); send(false); };
 render();
 </script>

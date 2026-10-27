@@ -57,7 +57,7 @@ final class WorkoutCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
         return ok && usingPhone
     }
     /// Start counting a new exercise from zero.
-    func begin(_ k: String) { queue.async { self.kind = k; self.counter = k == "pushups" ? .pushUp() : k == "bridges" ? .bridge() : .clamshell() } }
+    func begin(_ k: String) { queue.async { self.kind = k; self.counter = k == "pushups" ? .pushUp() : k == "bridges" ? .bridge() : k == "legs" ? .legSpread() : .clamshell() } }
 
     func captureOutput(_ output: AVCaptureOutput, didOutput buffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard -last.timeIntervalSinceNow > 0.08, let px = CMSampleBufferGetImageBuffer(buffer) else { return }
@@ -94,7 +94,8 @@ final class WorkoutCounter: NSObject, AVCaptureVideoDataOutputSampleBufferDelega
                     let hip = p(.rightHip).map { ((lh.0 + $0.0) / 2, (lh.1 + $0.1) / 2) } ?? lh
                     let angle = Rep.angle(lk, hip, rk)
                     counter.feed(angle)
-                    coach = angle > 25 ? "Open… and close slowly" : "Feet together, lift the top knee"
+                    coach = kind == "legs" ? (angle > 20 ? "Hold… and bring it back slowly" : "Lift the leg, slowly")
+                                           : (angle > 25 ? "Open… and close slowly" : "Feet together, lift the top knee")
                 } else { coach = "Back up so I can see your hips and both knees" }
             }
         }
@@ -117,6 +118,14 @@ final class WorkoutSession {
 
     /// ME/CFS- and POTS-friendly (user, Oct 26): everything lying down, slow, no position changes mid-set,
     /// and a timed sit-and-pause before standing so blood pressure can catch up.
+    /// Standing set for places without room to lie down (the office): hand on the desk, slow.
+    static func standing(reps: Int) -> [WorkoutStep] {
+        [WorkoutStep(title: "Leg kickbacks · first leg", kind: "legs", target: reps, hint: "Hand on the desk, side-on to the camera. Slow kick back."),
+         WorkoutStep(title: "Leg kickbacks · other leg", kind: "legs", target: reps, hint: "Same, other leg."),
+         WorkoutStep(title: "Side leg raises · first leg", kind: "legs", target: reps, hint: "Face the camera, hand on the desk, lift out to the side."),
+         WorkoutStep(title: "Side leg raises · other leg", kind: "legs", target: reps, hint: "Same, other leg.")]
+    }
+
     static func steps(bridges: Int, clamshells: Int, pauseSeconds: Int = 30) -> [WorkoutStep] {
         [WorkoutStep(title: "Glute bridges", kind: "bridges", target: bridges, hint: "On your back, knees bent. Lift slowly, lower slowly."),
          WorkoutStep(title: "Clamshells · first side", kind: "clamshells", target: clamshells, hint: "Roll onto your side, knees bent, feet together."),
@@ -125,7 +134,7 @@ final class WorkoutSession {
     }
 
     /// `done(finished, summary)`. False if there's no camera to count with.
-    func show(steps: [WorkoutStep], statement: String, done: @escaping (_ finished: Bool, _ summary: String) -> Void) -> Bool {
+    func show(steps: [WorkoutStep], statement: String, promise: Bool = true, done: @escaping (_ finished: Bool, _ summary: String) -> Void) -> Bool {
         guard window == nil, !steps.isEmpty, counter.start() else { return false }
         var i = 0, reps = 0, coach = "", log: [String] = []
         let finish: (Bool) -> Void = { [weak self] ok in
@@ -139,7 +148,11 @@ final class WorkoutSession {
                            styleMask: .borderless, backing: .buffered, defer: false)
         w.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 2)
         w.backgroundColor = Brand.c.paper; w.appearance = Brand.appearance; w.hasShadow = true
-        w.contentView = content(size: size, statement: statement) { finish(false) }
+        w.contentView = content(size: size, statement: statement, promise: promise ? {
+            // Honour system (Oct 26) for what the camera can't see; logged as promised, reviewed weekly.
+            log = ["promised: " + steps.filter { $0.kind != "pause" }.map { "\($0.title.components(separatedBy: " ·").first ?? $0.title) \($0.target)" }.joined(separator: ", ")]
+            i = steps.count - 1; finish(true)
+        } : nil) { finish(false) }
         w.makeKeyAndOrderFront(nil); window = w
         // The phone connecting mid-workout: switch to it on its own.
         deviceObserver = NotificationCenter.default.addObserver(forName: .AVCaptureDeviceWasConnected, object: nil, queue: .main) { [weak self] note in
@@ -181,7 +194,7 @@ final class WorkoutSession {
         counter.stop(); window?.orderOut(nil); window = nil; handlers = []
     }
 
-    private func content(size: NSSize, statement: String, skip: @escaping () -> Void) -> NSView {
+    private func content(size: NSSize, statement: String, promise: (() -> Void)?, skip: @escaping () -> Void) -> NSView {
         let c = Brand.c
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .centerX; stack.spacing = 14
         tag.font = Brand.mono(10.5, .medium); tag.textColor = c.faint
@@ -201,7 +214,12 @@ final class WorkoutSession {
             }
         }
         handlers.append(use)
-        let row = NSStackView(views: [phoneStatus, Brand.button("Use iPhone camera", size: 12, target: use, action: #selector(Card.Handler.fire))])
+        var rowViews: [NSView] = [phoneStatus, Brand.button("Use iPhone camera", size: 12, target: use, action: #selector(Card.Handler.fire))]
+        if let promise {
+            let h = Card.Handler { promise() }; handlers.append(h)
+            rowViews.append(Brand.button("🤞 I promise I did it", size: 12, target: h, action: #selector(Card.Handler.fire)))
+        }
+        let row = NSStackView(views: rowViews)
         row.spacing = 10
         stack.addArrangedSubview(row)
         stack.setCustomSpacing(28, after: row)

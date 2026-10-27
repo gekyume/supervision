@@ -256,6 +256,11 @@ check(WorkoutRule.due(hour: 12, afterHour: 11, tier: "yellow", doneToday: false,
 check(!WorkoutRule.due(hour: 12, afterHour: 11, tier: "red", doneToday: false, triedToday: false), "never on red days")
 check(!WorkoutRule.due(hour: 17, afterHour: 11, tier: "green", doneToday: false, triedToday: false), "not from 5 pm")
 check(!WorkoutRule.due(hour: 13, afterHour: 11, tier: "green", doneToday: true, triedToday: false), "once a day")
+check(!WorkoutRule.due(hour: 13, afterHour: 11, tier: "green", doneToday: false, triedToday: false, place: nil), "no workout where the place allows none (Boston, unknown)")
+check(WorkoutRule.due(hour: 13, afterHour: 11, tier: "green", doneToday: false, triedToday: false, place: "standing"), "the office allows the standing set")
+var ls = Rep.Counter.legSpread()
+for a in [4.0, 12, 28, 35, 20, 8, 5, 30, 9] { ls.feed(a) }
+check(ls.reps == 2, "two kickbacks / side raises (got \(ls.reps))")
 
 // MARK: ADaPT
 section("adapt")

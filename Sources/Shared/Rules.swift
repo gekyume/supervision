@@ -285,6 +285,8 @@ enum Rep {
         }
         static func pushUp() -> Counter { Counter(enter: 100, exit: 150, rising: false) }
         static func clamshell() -> Counter { Counter(enter: 30, exit: 12, rising: true) }
+        /// Standing leg kickbacks / side leg raises: the legs spread past 25° at the hip, back below 10°.
+        static func legSpread() -> Counter { Counter(enter: 25, exit: 10, rising: true) }
         /// Glute bridge: the shoulder–hip–knee line straightens past 158° (hips up), back below 140° (down).
         static func bridge() -> Counter { Counter(enter: 158, exit: 140, rising: true) }
     }
@@ -293,8 +295,8 @@ enum Rep {
 enum WorkoutRule {
     /// The daily workout break: the first regular break from `afterHour`, not on red days, not from
     /// 5 pm (the evening rule for movement), once a day.
-    static func due(hour: Int, afterHour: Int, tier: String, doneToday: Bool, triedToday: Bool) -> Bool {
-        hour >= afterHour && hour < 17 && tier != "red" && !doneToday && !triedToday
+    static func due(hour: Int, afterHour: Int, tier: String, doneToday: Bool, triedToday: Bool, place: String? = "lying") -> Bool {
+        hour >= afterHour && hour < 17 && tier != "red" && !doneToday && !triedToday && place != nil
     }
 }
 

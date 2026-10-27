@@ -33,6 +33,8 @@ struct Config: Codable {
     var eyeNoticeSeconds: Double = 30
     var workoutOn = true                  // once a day the first break after `workoutAfterHour` is a counted workout (not red days)
     var workoutAfterHour = 11
+    var workoutStandingReps = 8              // standing set (office): per leg
+    var workoutPromiseOn = true              // "I promise I did it" (honour system, reviewed weekly; false removes it)
     var workoutBridges = 8, workoutClamshells = 10   // lying-down set (POTS-friendly); clamshells per side; grow only if the mornings after look fine
     var workoutStopStatement = "I am stopping my workout even though it is part of my plan"
     var microEveryMinutes: Double = 30    // a 10-s stand + reach micro-break this often (focused time; 0 = off)

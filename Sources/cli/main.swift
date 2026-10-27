@@ -108,7 +108,7 @@ case "digest":
             """) { r in rows.append((1...4).map { sqlite3_column_type(r, Int32($0)) == SQLITE_NULL ? "-" : "\(sqlite3_column_int(r, Int32($0)))" }) }
         let checks = rows.isEmpty ? "–" : rows.first!.joined(separator: ",") + (rows.count > 1 ? " → " + rows.last!.joined(separator: ",") : "") + " (\(rows.count))"
         var flags: [String] = []
-        query("SELECT kind, COUNT(*) FROM events WHERE ts>=\(s0) AND ts<\(e0) AND (kind LIKE 'flag_%' OR kind IN ('gate_asked','gate_declined','gate_rest','gate_stop','day_lock','night_lock','clean_slate','app_blocked','app_added','reward','marker')) GROUP BY kind") { r in
+        query("SELECT kind, COUNT(*) FROM events WHERE ts>=\(s0) AND ts<\(e0) AND (kind LIKE 'flag_%' OR kind IN ('gate_asked','gate_declined','gate_rest','gate_stop','day_lock','night_lock','clean_slate','app_blocked','app_added','reward','marker','workout')) GROUP BY kind") { r in
             flags.append("\(text(r, 0).replacingOccurrences(of: "flag_", with: ""))×\(sqlite3_column_int(r, 1))")
         }
         let swText = sw.isEmpty ? "–" : String(format: "%.1f", sw.reduce(0, +) / Double(sw.count))

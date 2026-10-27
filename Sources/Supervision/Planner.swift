@@ -9,11 +9,14 @@ struct WorkContext: Codable {
     var name: String
     var ssids: [String] = []
     var activities: [String] = []   // keys into Activity.catalog
+    var workout: String? = nil      // "lying" | "standing" | nil (none): the daily workout this place allows
+    var label: String? = nil        // how the "Where are you?" card names it ("Office", "Parents")
 }
 
 struct Contexts: Codable {
     var current: String = "home"
     var manualUntil: Date? = nil    // a manual switch wins over Wi-Fi until this time
+    var askedSSIDs: [String] = []   // networks already asked about ("Somewhere else" ones stay unmatched)
     var contexts: [WorkContext] = [
         // Defaults for a new install. Add Wi-Fi names with `supervisionctl context add-wifi home "<ssid>"`.
         WorkContext(name: "home", activities: ["rest", "music", "stretch", "footpt", "walk", "pilates", "journal", "plan", "rap", "poetry"]),

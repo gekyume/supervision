@@ -698,9 +698,12 @@ final class Engine {
 
     /// The counted workout. In a break it holds the break's end and takes 2 min off when done.
     @discardableResult private func startWorkout(inBreak: Bool, tryReps: Int = 0) -> Bool {
-        let steps = tryReps > 0 ? WorkoutSession.steps(bridges: tryReps, clamshells: tryReps, pauseSeconds: 10)
-                                : WorkoutSession.steps(bridges: config.workoutBridges, clamshells: config.workoutClamshells)
-        let ok = WorkoutSession.shared.show(steps: steps, statement: config.workoutStopStatement) { [weak self] finished, summary in
+        // The set follows the place (Oct 26): lying-down at home and at the parents', standing at the office.
+        let standing = contexts.active.workout == "standing"
+        let steps = standing ? WorkoutSession.standing(reps: tryReps > 0 ? tryReps : config.workoutStandingReps)
+            : tryReps > 0 ? WorkoutSession.steps(bridges: tryReps, clamshells: tryReps, pauseSeconds: 10)
+                          : WorkoutSession.steps(bridges: config.workoutBridges, clamshells: config.workoutClamshells)
+        let ok = WorkoutSession.shared.show(steps: steps, statement: config.workoutStopStatement, promise: config.workoutPromiseOn) { [weak self] finished, summary in
             guard let self = self else { return }
             Store.shared.event("workout", (finished ? "done: " : "stopped: ") + summary + (inBreak ? "" : " (asked for in chat)"))
             if inBreak, self.workoutPending {
@@ -793,7 +796,7 @@ final class Engine {
         let doneToday = Store.shared.eventDetails(kind: "workout", since: Day.today).contains { $0.hasPrefix("done") }
         let triedToday = Store.shared.lastEvent(kind: "workout_started", since: Day.today) != nil
         if config.workoutOn, plan != nil, !nightBreak, !dayLocked, !resumed,
-           WorkoutRule.due(hour: hourNow, afterHour: config.workoutAfterHour, tier: tier, doneToday: doneToday, triedToday: triedToday),
+           WorkoutRule.due(hour: hourNow, afterHour: config.workoutAfterHour, tier: tier, doneToday: doneToday, triedToday: triedToday, place: contexts.active.workout),
            startWorkout(inBreak: true) {
             // the workout is this break's movement
         } else if config.moveCheckOn, plan != nil, !nightBreak, !dayLocked, !resumed {
@@ -1067,13 +1070,36 @@ final class Engine {
         lastContextCheck = Date()
         contexts = Contexts.load()
         if let m = contexts.manualUntil, m > Date() { return }
-        guard let ssid = Contexts.currentSSID(),
-              let match = contexts.contexts.first(where: { $0.ssids.contains(ssid) }),
-              match.name != contexts.current else { return }
+        guard let ssid = Contexts.currentSSID() else { return }
+        guard let match = contexts.contexts.first(where: { $0.ssids.contains(ssid) }) else {
+            askWhere(ssid); return
+        }
+        guard match.name != contexts.current else { return }
         contexts.current = match.name; contexts.save()
         Store.shared.event("context", "Switched to '\(match.name)' (Wi-Fi: \(ssid))")
     }
     var contextName: String { contexts.active.name }
+
+    /// A Wi-Fi network the app hasn't seen: one card, one tap, remembered (Oct 26). Never asked twice.
+    private func askWhere(_ ssid: String) {
+        guard !contexts.askedSSIDs.contains(ssid), breakUntil == nil else { return }
+        contexts.askedSSIDs.append(ssid); contexts.save()
+        let choices = contexts.contexts.filter { $0.name != "elsewhere" }.prefix(5).map { c in
+            (c.label ?? c.name.capitalized, { [weak self] in
+                guard let self = self else { return }
+                var cs = Contexts.load()
+                if let i = cs.contexts.firstIndex(where: { $0.name == c.name }) { cs.contexts[i].ssids.append(ssid) }
+                cs.current = c.name; cs.save(); self.contexts = cs
+                Store.shared.event("context", "Wi-Fi '\(ssid)' is \(c.name) (tapped)")
+            })
+        }
+        let elsewhere: (String, () -> Void) = ("Somewhere else", { [weak self] in
+            var cs = Contexts.load(); cs.current = "elsewhere"; cs.save(); self?.contexts = cs
+            Store.shared.event("context", "Wi-Fi '\(ssid)': somewhere else")
+        })
+        Card.shared.ask("Where are you? 📍", body: "New Wi-Fi (\(ssid)). One tap and I'll remember it, so breaks and workouts fit the place.",
+                        buttons: Array(choices) + [elsewhere], seconds: 600, tag: "New place", onTimeout: {})
+    }
 
     private func writeHourIfNeeded() {
         let h = Calendar.current.component(.hour, from: Date())
