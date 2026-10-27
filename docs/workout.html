@@ -79,6 +79,7 @@ const $ = id => document.getElementById(id);
 const v = $("v"), cv = $("c"), ctx = cv.getContext("2d");
 let pose, i = 0, reps = 0, armed = false, stepStart = 0, running = false, done = [], wake;
 let facing = "user";   // front camera, so you can see yourself (Oct 26)
+let settleUntil = 0;   // between steps: 6 s to get into position before counting (Oct 27: rolling over counted as reps)
 let follow = null;     // the Mac's workout screen, when one is up (Oct 27: "always update to whatever is on my screen")
 
 function counter(kind) { return kind === "bridges" ? { enter: 158, exit: 140 } : kind === "legs" ? { enter: 25, exit: 10 } : { enter: 30, exit: 12 }; }
@@ -115,7 +116,7 @@ async function send(ok) {
 function next() {
   const s = steps[i];
   if (s.kind !== "pause") done.push(`${s.title.split(" ·")[0].toLowerCase()} ${s.target}`);
-  i++; reps = 0; armed = false; stepStart = performance.now();
+  i++; reps = 0; armed = false; stepStart = performance.now(); settleUntil = stepStart + 6000;
   if (i >= steps.length && follow) { running = false; $("title").textContent = "✓ Nice work"; $("count").textContent = "✓"; $("stop").hidden = true; wake?.release?.(); $("coach").textContent = "Your Mac has the count."; return; }
   if (i >= steps.length) { running = false; $("title").textContent = "✓ Nice work"; $("count").textContent = "✓"; $("stop").hidden = true; wake?.release?.(); send(true); return; }
   $("coach").textContent = steps[i].kind === steps[i - 1].kind ? "Switch sides" : steps[i].hint;
@@ -130,6 +131,10 @@ function loop() {
     render(); if (reps >= s.target) next(); requestAnimationFrame(loop); return;
   }
   cv.width = v.videoWidth; cv.height = v.videoHeight; ctx.clearRect(0, 0, cv.width, cv.height);
+  if (now < settleUntil) {
+    $("coach").textContent = `Get into position · counting starts in ${Math.ceil((settleUntil - now) / 1000)}`;
+    render(); requestAnimationFrame(loop); return;
+  }
   const r = pose.detectForVideo(v, now), lm = r.landmarks?.[0];
   const W = v.videoWidth, H = v.videoHeight;
   const P = k => lm && lm[k] && (lm[k].visibility ?? 1) > 0.5 ? [lm[k].x * W, lm[k].y * H] : null;
@@ -179,6 +184,8 @@ $("set").onclick = () => {
 if (steps === standing) $("set").textContent = "Lying-down set";
 // Honour system for what the camera can't see: logged as "promised" on the Mac, reviewed weekly.
 $("promise").onclick = () => {
+  if ($("promise").disabled) return;
+  $("promise").disabled = true;
   running = false; wake?.release?.();
   done = ["promised: " + steps.filter(s => s.kind !== "pause").map(s => `${s.title.split(" ·")[0].toLowerCase()} ${s.target}`).join(", ")];
   i = steps.length - 1; $("title").textContent = "✓ Counted on your word"; $("stop").hidden = true; send(true);
@@ -198,7 +205,7 @@ function applyState(st) {
   const same = follow && JSON.stringify(follow.steps) === JSON.stringify(st.steps);
   follow = st;
   if (!same) { steps = st.steps.map(x => ({ ...x, kind: kindOf(x.kind) })); done = []; i = -1; }
-  if (st.i !== i) { i = Math.min(st.i, steps.length - 1); reps = 0; armed = false; stepStart = performance.now(); if (running) $("coach").textContent = steps[i].hint; }
+  if (st.i !== i) { const first = i < 0; i = Math.min(st.i, steps.length - 1); reps = 0; armed = false; stepStart = performance.now(); settleUntil = first ? 0 : stepStart + 6000; if (running) $("coach").textContent = steps[i].hint; }
   if ((st.reps || 0) > reps && steps[i].kind !== "pause") reps = st.reps;
   $("set").hidden = true; $("note").hidden = running; $("note").textContent = "Following your Mac's workout. Tap Start, prop the phone where it can see you.";
   render();

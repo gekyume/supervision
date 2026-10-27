@@ -121,7 +121,7 @@ final class WorkoutSession {
     /// A rep counted by the phone page while it follows this screen (Oct 27).
     func phoneRep(step: Int, reps: Int) {
         guard window != nil else { return }
-        if let p = phoneReps, p.step == step, p.reps >= reps { return }
+        if let p = phoneReps, p.step > step || (p.step == step && p.reps >= reps) { return }
         phoneReps = (step, reps)
     }
 
@@ -172,8 +172,11 @@ final class WorkoutSession {
             done(ok, (log + (ok ? [] : ["stopped at \(steps[min(i, steps.count - 1)].title) \(reps)/\(steps[min(i, steps.count - 1)].target)"])).joined(separator: ", "))
         }
         counter.begin(steps[0].kind)
-        var stepAt = Date()   // a count still in flight from the last exercise must not land on the next
-        counter.onUpdate = { r, c in if -stepAt.timeIntervalSinceNow > 0.6 { reps = max(reps, r) }; coach = c }
+        // Between steps, `settle` seconds to get into position before counting starts (Oct 27: rolling over
+        // for the other side counted as 3 clamshells). The counter restarts when they're up.
+        let settle = 6.0
+        var stepAt = Date(), counting = true
+        counter.onUpdate = { r, c in if counting { reps = max(reps, r); coach = c } }
         phoneReps = nil; lastPublished = ""; PhoneRelay.shared.fast = true
         // Full screen (Oct 27: as a panel, the break screen's tag and buttons peeked out around it).
         let screen = NSScreen.main?.frame ?? .zero, size = screen.size
@@ -196,7 +199,14 @@ final class WorkoutSession {
             guard let self = self, self.window != nil else { t.invalidate(); return }
             let s = steps[i]
             if s.kind == "pause" { reps = Int(-stepStarted.timeIntervalSinceNow); coach = "Sitting. \(max(0, s.target - reps)) s, then stand slowly" }
-            else if let p = self.phoneReps, p.step == i, p.reps > reps { reps = p.reps; coach = "📱 Counted on your phone" }
+            else if !counting {
+                let left = Int(ceil(settle + stepAt.timeIntervalSinceNow))
+                if left <= 0 { counting = true; reps = 0; self.counter.begin(s.kind) } else { coach = "Get into position · counting starts in \(left)" }
+            }
+            if s.kind != "pause", let p = self.phoneReps {
+                if p.step > i { reps = s.target }   // the phone is already past this one
+                else if p.step == i, p.reps > reps { reps = p.reps; coach = "📱 Counted on your phone" }
+            }
             self.publish(steps, i, s.kind == "pause" ? 0 : reps)
             self.tag.stringValue = "WORKOUT · STEP \(i + 1) OF \(steps.count)"
             self.phoneStatus.stringValue = self.counter.usingPhone ? "📱 iPhone camera: connected ✓"
@@ -207,13 +217,14 @@ final class WorkoutSession {
             self.coachLine.stringValue = coach.isEmpty ? s.hint : coach
             if reps >= s.target {
                 if s.kind != "pause" { log.append("\(s.title.components(separatedBy: " ·").first ?? s.title) \(s.target)") }
-                i += 1; reps = 0; coach = ""; stepStarted = Date(); stepAt = Date(); self.phoneReps = nil
+                i += 1; reps = 0; coach = ""; stepStarted = Date(); stepAt = Date(); counting = false
+                if let p = self.phoneReps, p.step < i { self.phoneReps = nil }
                 if i >= steps.count {
                     t.invalidate(); self.counter.stop()
                     self.title.stringValue = "✓ Done"; self.coachLine.stringValue = "Nice work. Back to your break."
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { finish(true) }
                 } else {
-                    if steps[i].kind != "pause" { self.counter.begin(steps[i].kind) }
+                    if steps[i].kind == "pause" { counting = true }
                     self.coachLine.stringValue = steps[i].kind == steps[i - 1].kind ? "Switch sides" : "Next: \(steps[i].title)"
                 }
             }

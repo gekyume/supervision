@@ -7,16 +7,20 @@ import Foundation
 /// Messages: "<minutes>|<reason>" → pause 1–120 min (ends any lock now), "end…" → resume.
 /// Anything else unlocks for 30 min (a tap on the phone must never silently fail). Every unlock is logged with its reason, like a pause from Claude.
 /// The topic name is the secret; it lives in phone.json (never in the repo).
-final class PhoneRelay {
+final class PhoneRelay: NSObject, URLSessionDataDelegate {
     static let shared = PhoneRelay()
-    struct Settings: Codable { var topic = ""; var lastId = "" }
+    struct Settings: Codable { var topic = ""; var lastId = ""; var seen: [String]? = nil }
     static let file = Paths.dir.appendingPathComponent("phone.json")
     private var settings = Settings()
     private var timer: Timer?
     private var inFlight = false
     private var lastPoll = Date.distantPast
-    /// Poll every 2 s instead of 10 while the workout screen is up, so phone reps show quickly.
-    var fast = false
+    /// While the workout screen is up, one open stream instead of polling (Oct 27: polling every 2 s
+    /// got throttled by ntfy and phone reps were lost).
+    var fast = false { didSet { if fast != oldValue { fast ? openStream() : closeStream() } } }
+    private var stream: URLSessionDataTask?
+    private var streamBuffer = Data()
+    private lazy var streamSession = URLSession(configuration: .default, delegate: self, delegateQueue: .main)
     /// The phone workout page link (Oct 27): opening it once teaches the phone the Mac's address.
     var workoutLink: String { "https://raw.githack.com/gekyume/supervision/main/docs/workout.html?t=\(settings.topic)" }
 
@@ -34,8 +38,8 @@ final class PhoneRelay {
             settings.topic = "sv-" + (0..<4).map { _ in String(format: "%08x", UInt32.random(in: .min ... .max)) }.joined()
             saveJSON(settings, to: Self.file)
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            guard let self = self, self.fast || -self.lastPoll.timeIntervalSinceNow >= 10 else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            guard let self = self, self.stream == nil else { return }
             self.poll()
         }
     }
@@ -51,18 +55,47 @@ final class PhoneRelay {
             DispatchQueue.main.async {
                 self?.inFlight = false
                 guard let self = self, let data = data, let text = String(data: data, encoding: .utf8) else { return }
-                for line in text.split(separator: "\n") {
-                    guard let d = line.data(using: .utf8),
-                          let m = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                          m["event"] as? String == "message", let id = m["id"] as? String else { continue }
-                    self.settings.lastId = id
-                    saveJSON(self.settings, to: Self.file)
-                    if let t = m["time"] as? Double, PhoneMessage.isFresh(sentAt: t, now: Date().timeIntervalSince1970) {
-                        self.apply((m["message"] as? String) ?? "")
-                    }
-                }
+                for line in text.split(separator: "\n") { self.handle(line: String(line)) }
             }
         }.resume()
+    }
+
+    /// One ntfy JSON line. Each message is applied once, ever (Oct 27: several sent in the same second
+    /// came back on every poll, and one 🤞 tap was applied ~170 times).
+    private func handle(line: String) {
+        guard let d = line.data(using: .utf8),
+              let m = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+              m["event"] as? String == "message", let id = m["id"] as? String else { return }
+        var seen = settings.seen ?? []
+        guard !seen.contains(id) else { return }
+        seen.append(id); settings.seen = Array(seen.suffix(200)); settings.lastId = id
+        saveJSON(settings, to: Self.file)
+        if let t = m["time"] as? Double, PhoneMessage.isFresh(sentAt: t, now: Date().timeIntervalSince1970) {
+            apply((m["message"] as? String) ?? "")
+        }
+    }
+
+    private func openStream() {
+        guard stream == nil, !settings.topic.isEmpty, let url = URL(string: "https://ntfy.sh/\(settings.topic)/json") else { return }
+        poll()   // anything sent just before
+        streamBuffer = Data()
+        let t = streamSession.dataTask(with: URLRequest(url: url, timeoutInterval: 3600)); stream = t; t.resume()
+    }
+    private func closeStream() { stream?.cancel(); stream = nil }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard dataTask == stream else { return }
+        streamBuffer.append(data)
+        while let nl = streamBuffer.firstIndex(of: 0x0A) {
+            let line = String(decoding: streamBuffer[streamBuffer.startIndex..<nl], as: UTF8.self)
+            streamBuffer.removeSubrange(streamBuffer.startIndex...nl)
+            handle(line: line)
+        }
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard task == stream else { return }
+        stream = nil
+        if fast { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in if self?.fast == true { self?.openStream() } } }
     }
 
     private func apply(_ message: String) {
